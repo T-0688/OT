@@ -1182,7 +1182,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.11.0</span>
+            <span className="version">v1.12.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1583,7 +1583,7 @@ export default function App() {
             ${cost.toFixed(4)}
           </span>
           <span className="stat balance" title={balance.total != null ? "DeepSeek 账户余额（实时查询）" : "剩余额度＝初始余额－已花费（设置里可改）"}>
-            {balance.total != null ? `${balance.total.toFixed(2)} ${balance.currency ?? ""}` : `$${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}`}
+            {balance.total != null ? `${balance.currency === "USD" ? "$" : "¥"}${balance.total.toFixed(2)}` : `$${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}`}
           </span>
           <span className="spacer" />
           <span className="stat muted">ACP · {agentId}</span>
@@ -2949,6 +2949,8 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
 
 
 

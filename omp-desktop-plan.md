@@ -855,3 +855,10 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 ### 52. 1.11.0：状态栏余额去掉「余」（2026-10-19）
 
 状态栏余额由 `余 7.04 CNY` 改为 `7.04 CNY`（fallback 由 `余 $0.00` 改为 `$0.00`），右侧空间更干净。版本 1.10.0 → 1.11.0。
+
+### 53. 1.12.0：手机浅色会话列表、余额 ¥（2026-10-19）
+
+- 手机浅色主题下会话列表变白底黑字：`.sess` 是 button，被 `body.light button { background:#111827 }` 覆盖成深色，补 `body.light .sess { background: transparent; color:#374151 }` 与副标题颜色
+- 桌面状态栏余额按币种显示：CNY → `¥6.72`，USD → `$x.xx`
+- 验证 DeepSeek 密钥：`GET https://api.deepseek.com/models` 返回且仅返回 `deepseek-flash`（DeepSeek-V4.1-Flash）与 `deepseek-v4-pro`，`owned_by: deepseek`；余额 `CNY 6.72` → 确认是官方密钥，当前模型是 deepseek-flash
+- 版本 1.11.0 → 1.12.0
