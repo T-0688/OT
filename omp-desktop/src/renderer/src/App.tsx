@@ -1164,7 +1164,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.6.0</span>
+            <span className="version">v1.7.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2021,7 +2021,22 @@ function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: It
   }
 
   if (item.kind === "note") {
-    return <div className="msg note">{item.text}</div>;
+    const needsFix = item.text.includes("[fix-gitignore]");
+    const text = item.text.replace("[fix-gitignore]", "").trimEnd();
+    return (
+      <div className="msg note">
+        <span className="note-text">{text}</span>
+        {needsFix ? (
+          <button
+            className="note-btn"
+            onClick={() => void window.api.fixGitignore()}
+            title="把命中的文件规则写进 .gitignore"
+          >
+            一键写入 .gitignore
+          </button>
+        ) : null}
+      </div>
+    );
   }
 
   if (item.kind === "turn") {
@@ -2838,6 +2853,8 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
 
 
 

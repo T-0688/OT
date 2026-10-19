@@ -331,6 +331,45 @@ function sensitiveHits(files: string[]): string[] {
   return files.filter((f) => SENSITIVE_PATTERNS.some((re) => re.test(f)));
 }
 
+function gitignoreRules(files: string[]): string[] {
+  const rules = new Set<string>();
+  for (const f of files) {
+    const base = f.split("/").pop() ?? f;
+    if (/^\.env($|\.)/i.test(base)) rules.add(".env*");
+    else if (/\.(pem|key|p12|pfx|keystore|jks|ppk)$/i.test(base)) rules.add(`*.${base.split(".").pop()}`);
+    else if (/^id_(rsa|dsa|ecdsa|ed25519)$/i.test(base)) rules.add("id_*");
+    else if (f.startsWith(".ssh/")) rules.add(".ssh/");
+    else if (f.startsWith(".aws/")) rules.add(".aws/");
+    else rules.add(f);
+  }
+  return [...rules];
+}
+
+function fixGitignore(cwd: string): { ok: boolean; added: number; error?: string } {
+  try {
+    let root = cwd;
+    try {
+      root = gitRun(cwd, ["rev-parse", "--show-toplevel"]).trim();
+    } catch {
+      return { ok: false, added: 0, error: "当前目录不是 git 仓库" };
+    }
+    const staged = gitRun(root, ["status", "--porcelain", "--untracked-files=all"])
+      .split(/\r?\n/)
+      .map((l) => l.slice(3).trim())
+      .filter(Boolean);
+    const hits = sensitiveHits(staged);
+    if (!hits.length) return { ok: true, added: 0 };
+    const file = join(root, ".gitignore");
+    const existing = existsSync(file) ? readFileSync(file, "utf8") : "";
+    const rules = gitignoreRules(hits).filter((r) => !existing.split(/\r?\n/).includes(r));
+    if (!rules.length) return { ok: true, added: 0 };
+    const block = `${existing && !existing.endsWith("\n") ? "\n" : ""}\n# OT 自动补充（敏感文件）\n${rules.join("\n")}\n`;
+    writeFileSync(file, existing + block, "utf8");
+    return { ok: true, added: rules.length };
+  } catch (err: any) {
+    return { ok: false, added: 0, error: String(err?.message ?? err) };
+  }
+}
 async function autoUpload(cwd: string): Promise<void> {
   const cfg = settings!.get();
   try {
@@ -348,7 +387,10 @@ async function autoUpload(cwd: string): Promise<void> {
       const hits = sensitiveHits(staged);
       if (hits.length) {
         try { gitRun(root, ["reset"]); } catch { /* ignore */ }
-        emit({ t: "note", text: `已拦截自动上传：检测到敏感文件\n${hits.slice(0, 8).map((f) => `· ${f}`).join("\n")}\n请先加入 .gitignore 或从工作区移除。` });
+        emit({
+          t: "note",
+          text: `已拦截自动上传：检测到敏感文件\n${hits.slice(0, 8).map((f) => `· ${f}`).join("\n")}\n请先加入 .gitignore 或从工作区移除。[fix-gitignore]`,
+        });
         return;
       }
     }
@@ -804,6 +846,16 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     ipcMain.handle("balance:get", () => fetchBalance());
+    ipcMain.handle("github:fixGitignore", () => {
+      const res = fixGitignore(sessionCwd);
+      if (res.ok) {
+        emit({ t: "note", text: res.added ? `已写入 .gitignore（${res.added} 条规则），可以再次上传了。` : "没有需要新增的规则（可能已在 .gitignore 里）。" });
+      } else {
+        emit({ t: "note", text: `写入 .gitignore 失败：${res.error}` });
+      }
+      return res;
+    });
+
     ipcMain.handle("github:uploadNow", async () => {
       try {
         await autoUpload(sessionCwd);
@@ -953,6 +1005,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 

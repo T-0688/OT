@@ -3951,3 +3951,27 @@ body {
   text-align: left;
   color: color-mix(in srgb, var(--text) 92%, transparent);
 }
+
+.msg.note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  white-space: pre-wrap;
+}
+
+.note-btn {
+  align-self: flex-start;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.note-btn:hover {
+  border-color: var(--dsw-alias-border-l3, var(--border));
+  background: var(--panel-2);
+}

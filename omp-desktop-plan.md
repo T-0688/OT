@@ -808,3 +808,13 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.5.0 → 1.6.0
 
 **验证**：临时仓库放入 `.env` 与 `server.key`，触发上传 → 返回 ok、暂存被撤销，对话里出现「已拦截自动上传：检测到敏感文件 · .env · server.key」。
+
+### 48. 1.7.0：一键写入 .gitignore（2026-10-19）
+
+拦截敏感文件时，提示里多一个按钮：
+
+- note 文本带 `[fix-gitignore]` 标记，渲染器识别后去掉标记并渲染「一键写入 .gitignore」按钮
+- 点击调用 `github:fixGitignore`：在 git 根目录扫描未跟踪/已修改文件，命中敏感规则后按类型归纳成规则（`.env*`、`*.key`、`id_*`、`.ssh/`、`.aws/` 等），追加到 `.gitignore` 末尾（带「# OT 自动补充（敏感文件）」注释），已存在的规则不重复写
+- 写入后再发 note 告知条数，用户可再次点上传
+
+**验证**：临时仓库含 `.env`、`server.key` → 上传被拦截 → 点按钮 → `.gitignore` 得到 `.env*` 和 `*.key`（added=2）。

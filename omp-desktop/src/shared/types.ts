@@ -188,6 +188,7 @@ export type RendererApi = {
   addCustomModel(input: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }): Promise<{ ok: boolean; error?: string }>;
   getBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }>;
   uploadNow(): Promise<{ ok: boolean; error?: string }>;
+  fixGitignore(): Promise<{ ok: boolean; added: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
   restoreCheckpoint(sessionId: string, turnId: string): Promise<{ restored: number; removed: number; failed: number }>;
   revealInFolder(path: string): Promise<void>;
@@ -195,6 +196,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 
