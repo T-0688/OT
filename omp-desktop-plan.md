@@ -925,3 +925,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.17.0 → 1.18.0
 
 **验证**：SendKeys 模拟 Ctrl+Shift+A 后出现遮罩窗口；CDP 拖拽 400×270 区域后输入框出现 1 张缩略图。
+
+### 60. 1.19.0：对话文字可自由复制（2026-10-19）
+
+根因：主进程执行了 `Menu.setApplicationMenu(null)`，Electron 的 Ctrl+C/V/X/A 加速键来自菜单 role，菜单为空时这些快捷键失效。
+
+- 改为设置一个只有「编辑」子菜单的应用菜单（窗口无边框 + autoHideMenuBar，界面看不到菜单条），role 提供 undo/redo/cut/copy/paste/selectAll 加速键
+- 主窗口 `webContents.on("context-menu")` 增加右键菜单：复制 / 全选 / 粘贴（可编辑时）/「用这段文字提问」（把选中文字塞进输入框并聚焦）
+- CSS 显式允许选择复制：`.flow/.msg/.markdown/.tool-output/pre/code/.turn-meta { user-select: text }`，并给选区加了主题色高亮
+- 版本 1.18.0 → 1.19.0
+
+**验证**：选中最后一条消息文本后按 Ctrl+C，`navigator.clipboard.readText()` 返回的正是选中内容。

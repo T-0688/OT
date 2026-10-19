@@ -197,6 +197,7 @@ export type RendererApi = {
   lanUrls(): Promise<string[]>;
   onScreenshot(cb: (base64: string) => void): () => void;
   startScreenshot(): Promise<void>;
+  onAskSelection(cb: (text: string) => void): () => void;
   uploadNow(): Promise<{ ok: boolean; error?: string }>;
   fixGitignore(): Promise<{ ok: boolean; added: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
@@ -206,6 +207,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

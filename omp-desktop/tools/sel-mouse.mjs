@@ -1,0 +1,16 @@
+const PORT = "9342";
+const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page = list.find(t => t.type === "page" && !t.url.includes("ot-shot-overlay"));
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result ?? m.error); pending.delete(m.id); } };
+await new Promise(r => ws.onopen = r);
+const send = (m, p = {}) => new Promise(res => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const ev = async e => (await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }))?.result?.value;
+await ev(`window.getSelection().removeAllRanges()`);
+await send("Input.dispatchMouseEvent", { type: "mousePressed", x: 330, y: 120, button: "left", clickCount: 1 });
+for (let y = 130; y <= 220; y += 10) await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 700, y, button: "left", buttons: 1 });
+await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 700, y: 220, button: "left", clickCount: 1 });
+console.log("selected:", await ev(`window.getSelection().toString().slice(0,60)`));
+console.log("elementAt:", await ev(`document.elementFromPoint(400,150)?.className`));
+process.exit(0);

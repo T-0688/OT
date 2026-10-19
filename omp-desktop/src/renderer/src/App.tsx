@@ -466,6 +466,16 @@ export default function App() {
     return offClients;
   }, []);
   useEffect(() => {
+    const off = window.api.onAskSelection((text) => {
+      setDraft((prev) => (prev ? `${prev}\n\n${text}` : text));
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLTextAreaElement>(".composer textarea");
+        el?.focus();
+      });
+    });
+    return off;
+  }, []);
+  useEffect(() => {
     const off = window.api.onScreenshot((base64) => {
       setAttachments((prev) => [...prev, { data: base64, mimeType: "image/png", name: "screenshot.png" }].slice(0, 6));
       requestAnimationFrame(() => {
@@ -1309,7 +1319,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.18.0</span>
+            <span className="version">v1.19.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -3115,6 +3125,8 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
 
 
 

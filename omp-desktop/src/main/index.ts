@@ -211,6 +211,21 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
+  // 右键菜单：复制/全选/粘贴，让对话里的文字随时能复制
+  win.webContents.on("context-menu", (_e, params) => {
+    const items: Electron.MenuItemConstructorOptions[] = [];
+    items.push({ role: "copy", label: "复制", enabled: Boolean(params.selectionText) });
+    items.push({ role: "selectAll", label: "全选" });
+    if (params.isEditable) items.push({ role: "paste", label: "粘贴" });
+    if (params.selectionText) {
+      items.push({ type: "separator" });
+      items.push({
+        label: "用这段文字提问",
+        click: () => win?.webContents.send("menu:ask-selection", params.selectionText),
+      });
+    }
+    Menu.buildFromTemplate(items).popup({ window: win ?? undefined });
+  });
   win.on("closed", () => {
     win = null;
   });
@@ -698,7 +713,23 @@ app.on("second-instance", () => {
       }
     }
     app.setPath("userData", dataDir);
-    Menu.setApplicationMenu(null);
+    // 保留一个隐藏的编辑菜单，Ctrl+C/V/X/A 才有加速键
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "编辑",
+        submenu: [
+          { role: "undo", label: "撤销" },
+          { role: "redo", label: "重做" },
+          { type: "separator" },
+          { role: "cut", label: "剪切" },
+          { role: "copy", label: "复制" },
+          { role: "paste", label: "粘贴" },
+          { role: "selectAll", label: "全选" },
+        ],
+      },
+    ]),
+  );
 
     settings = new SettingsStore(join(app.getPath("userData"), "settings.json"));
     if (!settings.get().remoteToken) {
@@ -1160,6 +1191,8 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
 
 
 

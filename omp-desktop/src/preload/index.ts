@@ -43,6 +43,12 @@ const api: RendererApi = {
   remoteTunnel: (on: boolean) => ipcRenderer.invoke("remote:tunnel", on),
   startScreenshot: () => ipcRenderer.invoke("screenshot:start"),
 
+  onAskSelection: (cb: (text: string) => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on("menu:ask-selection", handler as never);
+    return () => ipcRenderer.removeListener("menu:ask-selection", handler as never);
+  },
+
   onScreenshot: (cb: (base64: string) => void) => {
     const handler = (_e: unknown, base64: string) => cb(base64);
     ipcRenderer.on("screenshot:capture", handler as never);
@@ -73,6 +79,7 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
 
 
 

@@ -4211,3 +4211,22 @@ details.tool > .tool-output {
   from { background-position: 120% 0; }
   to { background-position: -20% 0; }
 }
+
+/* 对话文字可选中复制 */
+.flow,
+.msg,
+.markdown,
+.tool-output,
+.tool-title,
+pre,
+code,
+.turn-meta {
+  user-select: text;
+  cursor: auto;
+}
+
+.msg ::selection,
+.markdown ::selection,
+pre ::selection {
+  background: color-mix(in srgb, var(--accent, #5b8def) 35%, transparent);
+}
