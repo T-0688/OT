@@ -65,6 +65,8 @@ function emit(event: AgentEvent): void {
   if (event.t === "turn_end") {
     notifyTurnDone();
     if (currentSessionId) {
+      const meta = store?.get(currentSessionId);
+      remote?.notify(`OT · ${meta?.title ?? "任务完成"}`, "这一轮跑完了", currentSessionId);
       const u = event.usage;
       const tok = (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
       store?.addTurnStats(currentSessionId, tok, lastUsageCost, lastUsageUsed, lastUsageSize);
@@ -1199,6 +1201,7 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
 
 
 

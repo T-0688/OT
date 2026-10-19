@@ -1,6 +1,14 @@
 package dev.ot.app;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.webkit.JavascriptInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -27,6 +35,8 @@ public class MainActivity extends Activity {
     private static final String KEY_URL = "url";
 
     private static final int REQ_FILE = 1001;
+    private static final int REQ_NOTIF = 1002;
+    private static final String CHANNEL = "ot_tasks";
     private ValueCallback<Uri[]> fileCallback;
     private WebView web;
     private View splash;
@@ -35,6 +45,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ensureChannel();
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         String saved = prefs.getString(KEY_URL, null);
         String fromIntent = urlFromIntent(getIntent());
@@ -85,6 +96,7 @@ public class MainActivity extends Activity {
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             s.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
             web.setBackgroundColor(Color.parseColor("#151517"));
+            web.addJavascriptInterface(new NotifyBridge(), "OTNotify");
             web.setWebViewClient(new WebViewClient() {
                 @Override
                 public void onPageFinished(WebView view, String loadedUrl) {
@@ -272,12 +284,48 @@ public class MainActivity extends Activity {
         }
         super.onBackPressed();
     }
+
+    public class NotifyBridge {
+        @JavascriptInterface
+        public void post(String title, String body) {
+            notifyTask(title, body);
+        }
+    }
+
+    private void ensureChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null && nm.getNotificationChannel(CHANNEL) == null) {
+                NotificationChannel ch = new NotificationChannel(CHANNEL, "任务完成", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("OT 任务完成提醒");
+                nm.createNotificationChannel(ch);
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+        }
+    }
+
+    private void notifyTask(String title, String body) {
+        try {
+            ensureChannel();
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pi = PendingIntent.getActivity(this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new Notification.Builder(this, CHANNEL)
+                    : new Notification.Builder(this);
+            b.setSmallIcon(android.R.drawable.stat_notify_chat)
+                    .setContentTitle(title == null || title.isEmpty() ? "OT" : title)
+                    .setContentText(body == null || body.isEmpty() ? "任务完成" : body)
+                    .setAutoCancel(true)
+                    .setContentIntent(pi)
+                    .setDefaults(Notification.DEFAULT_ALL);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify((int) (System.currentTimeMillis() % 100000), b.build());
+        } catch (Exception ignored) {
+        }
+    }
 }
-
-
-
-
-
-
-
-

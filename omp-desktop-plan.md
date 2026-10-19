@@ -947,3 +947,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.19.0 → 1.20.0
 
 **验证**：重启后自动打开 6 轮会话，状态栏显示 `1.00M | 29% | 21.48M tok | 第 6 轮 | $0.7774`。
+
+### 62. 1.21.0：手机任务完成通知（2026-10-19）
+
+- 主进程 `turn_end` 时通过 `RemoteServer.notify()` 向所有 WS 客户端广播 `{t:"notify", title, body, sessionId}`，标题带会话名
+- 手机页收到 `notify`：前台显示底部 toast；后台调用 Android 原生桥 `window.OTNotify.post(title, body)`
+- Android 端新增 `@JavascriptInterface NotifyBridge`，创建 `ot_tasks` 通知渠道（IMPORTANCE_HIGH），用 PendingIntent 点击回到应用；Android 13+ 启动时申请 `POST_NOTIFICATIONS`
+- 覆盖范围：手机上发起的任务、电脑上发起的任务，只要手机连着（局域网或隧道）都会收到
+- 浏览器/WebView 无原生桥时回退到 Web Notification API
+- 版本 1.20.0 → 1.21.0
+
+**验证**：模拟手机 WS 客户端在电脑端跑完一轮后收到 `notify`；手机页注入 notify 消息后出现「这一轮跑完了」toast。

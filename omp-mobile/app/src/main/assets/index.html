@@ -75,6 +75,15 @@
   body.light .agent code, body.light .agent pre { background: #eef1f6; border-color: rgba(0,0,0,.08); }
   body.light .sheet { background: rgba(245,247,250,.98); }
   .icon-btn2 { width: 30px; padding: 0; height: 30px; font-size: 14px; font-weight: 400; }
+.toast {
+  position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 8px);
+  background: rgba(17,18,22,.92); color: #fff; font-size: 13px;
+  padding: 8px 14px; border-radius: 10px; opacity: 0;
+  transition: opacity .2s, transform .2s; z-index: 50; pointer-events: none;
+  max-width: 82vw; text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+body.light .toast { background: rgba(17,18,22,.9); }
 </style></head>
 <body>
 <header><span class="dot" id="dot"></span><b id="title">OT</b><button id="theme" class="ghost icon-btn2">☾</button><button id="refresh" class="ghost icon-btn2">↻</button><span class="sub" id="sub">连接中…</span></header>
@@ -174,6 +183,34 @@ function setStatus(s) {
 }
 let retry = 800;
 function cacheKey(suffix) { return 'omp.' + suffix + '.' + host; }
+function toast(text) {
+  try {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add('show'), 20);
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 2600);
+  } catch (e) {}
+}
+
+function showLocalNotification(title, body) {
+  try {
+    if (window.OTNotify && window.OTNotify.post) {
+      window.OTNotify.post(title, body);
+      return;
+    }
+  } catch (e) {}
+  try {
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') new Notification(title, { body: body });
+      else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((p) => { if (p === 'granted') new Notification(title, { body: body }); });
+      }
+    }
+  } catch (e) {}
+}
+
 function connect() {
   const proto = host.indexOf('127.0.0.1') >= 0 || host.indexOf('localhost') >= 0 ? 'ws://' : 'wss://';
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
@@ -212,6 +249,11 @@ function connect() {
       add('note', m.text);
     } else if (m.t === 'status') {
       setStatus(m.text);
+    } else if (m.t === 'notify') {
+      const ntitle = m.title || 'OT';
+      const nbody = m.body || '任务完成';
+      if (document.hidden) showLocalNotification(ntitle, nbody);
+      else toast(nbody);
     } else if (m.t === 'turn_end') {
       setStatus('空闲');
       cur = null;
@@ -424,3 +466,5 @@ try {
 connect();
 </script>
 </body></html>
+
+

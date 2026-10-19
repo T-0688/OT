@@ -117,6 +117,16 @@ export class RemoteServer {
     return { url: this.url(), token: this.token };
   }
 
+  notify(title: string, body: string, sessionId?: string): void {
+    const payload = JSON.stringify({ t: "notify", title, body, sessionId: sessionId ?? null });
+    for (const client of this.clients) {
+      try {
+        client.send(payload);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
   async stop(): Promise<void> {
     for (const client of this.clients) client.close();
     this.clients.clear();
@@ -269,6 +279,8 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
+
 
 
 
