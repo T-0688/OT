@@ -9,6 +9,7 @@ import type { AgentEvent } from "../shared/types.js";
 export type RemoteHooks = {
   sessions: () => { id: string; title: string; cwd: string; updatedAt?: string }[];
   open: (id: string) => Promise<{ ok: boolean; title?: string; error?: string }>;
+  start: (cwd: string, agentId?: string) => Promise<{ ok: boolean; error?: string }>;
   prompt: (text: string, images?: { data: string; mimeType: string; name?: string }[]) => Promise<{ ok: boolean; error?: string }>;
   permission: (id: string, optionId: string) => void;
   cancel: () => void;
@@ -256,6 +257,11 @@ export class RemoteServer {
         if (msg.type === "sessions") {
           socket.send(JSON.stringify({ t: "sessions", list: this.hooks.sessions(), current: this.currentId }));
         }
+        if (msg.type === "start" && msg.cwd) {
+          void this.hooks.start(String(msg.cwd), msg.agentId).then((r) => {
+            socket.send(JSON.stringify({ t: "start_result", ...r }));
+          });
+        }
         if (msg.type === "open" && msg.id) {
           this.history = [];
           this.broadcast({ t: "reset" });
@@ -290,6 +296,8 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
+
 
 
 

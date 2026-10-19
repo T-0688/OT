@@ -1104,3 +1104,15 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - `bridge.mjs` 的 `DATA_DIR` 改为脚本所在目录下的 `data/`，可用 `OT_WECHAT_DATA` 覆盖
 - README 路径同步；开机自启 VBS 指向 `D:\.Daily\ot-wechat\run-loop.cmd`
 - 验证：`node bridge.mjs ask "只回复 OK"` → `{"text":"OK","label":"【网站】"}`；绑定信息完整保留
+
+### 74. 1.30.0：微信专用工作区（2026-10-19）
+
+按需求，微信桥接不再沿用桌面当前会话的目录，而是固定跑在 `D:\.Daily\ot-wechat`：
+
+- `RemoteServer` 新增 WS 消息 `{type:"start", cwd}` → `hooks.start(cwd)` 新建会话（复用 `agent:start` 逻辑：dispose → new AgentSession → setAutoApprove → start → applyDefaults）
+- 桥接 `askOt` 收到 hello 后比较 cwd，不一致就发 `start`，收到 `start_result ok` 再发 prompt
+- 工作区路径存 `data/config.json`（默认脚本所在目录）
+- 回复前缀随之变为 `【ot-wechat】`
+- 版本 1.29.0 → 1.30.0
+
+**验证**：`node bridge.mjs ask "pwd，只回路径"` → `{"text":"D:\\.Daily\\ot-wechat","label":"【ot-wechat】"}`；再问工作区回答一致。

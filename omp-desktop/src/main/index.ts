@@ -978,6 +978,24 @@ app.on("second-instance", () => {
             return { ok: false, error: String(err?.message ?? err) };
           }
         },
+        start: async (cwd: string, agentId?: string) => {
+          try {
+            disposeSession();
+            const s = settings!.get();
+            const agent = findAgent(agentId ?? s.defaultAgent ?? currentAgentId);
+            currentSessionId = null;
+            currentAgentId = agent.id;
+            if (cwd) sessionCwd = cwd;
+            session = new AgentSession(agent, emit);
+            session.setAutoApprove(s.approvalMode === "auto");
+            session.setExtraArgs(agentExtraArgs());
+            await session.start(sessionCwd);
+            await applyDefaults();
+            return { ok: true };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
         history: (id: string) => store?.read(id) ?? [],
         onClients: (count: number) => win?.webContents.send("remote:clients", count),
         prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
@@ -1087,6 +1105,24 @@ app.on("second-instance", () => {
           try {
             emit({ t: "user", text });
             await session?.prompt(text, images);
+            return { ok: true };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
+        start: async (cwd: string, agentId?: string) => {
+          try {
+            disposeSession();
+            const s = settings!.get();
+            const agent = findAgent(agentId ?? s.defaultAgent ?? currentAgentId);
+            currentSessionId = null;
+            currentAgentId = agent.id;
+            if (cwd) sessionCwd = cwd;
+            session = new AgentSession(agent, emit);
+            session.setAutoApprove(s.approvalMode === "auto");
+            session.setExtraArgs(agentExtraArgs());
+            await session.start(sessionCwd);
+            await applyDefaults();
             return { ok: true };
           } catch (err: any) {
             return { ok: false, error: String(err?.message ?? err) };
@@ -1204,6 +1240,7 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
 
 
 
