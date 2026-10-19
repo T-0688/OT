@@ -1,0 +1,14 @@
+const list=await (await fetch(`http://127.0.0.1:9335/json/list`)).json();
+const page=list.find(t=>t.type==="page");
+const ws=new WebSocket(page.webSocketDebuggerUrl);
+let id=0;const pending=new Map(); const logs=[];
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.method==='Log.entryAdded') logs.push(m.params.entry.text);if(m.method==='Runtime.exceptionThrown') logs.push(JSON.stringify(m.params.exceptionDetails).slice(0,400));if(m.id&&pending.has(m.id)){pending.get(m.id)(m.result??m.error);pending.delete(m.id);}};
+await new Promise(r=>ws.onopen=r);
+const send=(m,p={})=>new Promise(res=>{const i=++id;pending.set(i,res);ws.send(JSON.stringify({id:i,method:m,params:p}));});
+await send("Log.enable"); await send("Runtime.enable");
+await send("Page.reload", { ignoreCache: false });
+await new Promise(r=>setTimeout(r,2500));
+const r = await send("Runtime.evaluate", { expression: "document.getElementById('root')?.innerHTML.length + '|' + document.body.innerText.slice(0,80)", returnByValue: true });
+console.log("dom:", r?.result?.value);
+console.log("logs:", logs.slice(0, 6).join("\n").slice(0, 1200));
+process.exit(0);

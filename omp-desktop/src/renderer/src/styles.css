@@ -3796,3 +3796,99 @@ body {
   padding: 0;
   justify-content: center;
 }
+
+/* ---------- 1.3.0：侧栏导航 / 手机状态 / 状态栏 ---------- */
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.nav-item.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.nav-kbd {
+  margin-top: 2px;
+  align-self: flex-start;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.phone-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+.phone-state.on {
+  color: #41c977;
+}
+
+.statusbar .ctx-ring {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.statusbar .ring-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.statusbar .muted {
+  color: var(--dim);
+}
+
+.statusbar .balance {
+  color: #41c977;
+}
+
+.turn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 1 !important;
+}
+
+.bg-shade {
+  background: rgba(8, 10, 14, var(--bg-shade, 0.55)) !important;
+  backdrop-filter: blur(var(--bg-blur, 12px));
+}
+
+[data-theme="light"] .bg-shade {
+  background: rgba(245, 247, 250, var(--bg-shade, 0.55)) !important;
+}

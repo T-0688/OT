@@ -23,6 +23,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tunnelMode: "quick",
   tunnelName: "",
   remoteToken: "",
+  reasoningDisplay: "summary",
+  bgShade: 0.55,
+  bgBlur: 12,
+  priceIn: 0,
+  priceOut: 0,
+  balanceStart: 0,
   tunnelToken: "",
   tunnelHostname: "",
   sessionView: "grouped",
@@ -67,6 +73,7 @@ export class SettingsStore {
     return this.current;
   }
 }
+
 
 
 

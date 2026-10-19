@@ -57,9 +57,24 @@
   .sess:active, .sess.on { background: #232324; }
   .sess b { font-weight: 500; font-size: 14px; line-height: 1.35; color: #f9fafb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sess span { font-size: 11px; color: #979da6; font-family: ui-monospace, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.light { background: #f5f7fa; color: #0f1115; }
+  body.light header { background: rgba(245,247,250,.94); border-bottom-color: rgba(0,0,0,.08); }
+  body.light footer { background: rgba(245,247,250,.96); border-top-color: rgba(0,0,0,.08); }
+  body.light .user { background: #e4e7ee; }
+  body.light .tool { color: #6b7280; border-left-color: #d5d9e2; }
+  body.light textarea { background: #fff; border-color: rgba(0,0,0,.12); color: #0f1115; }
+  body.light .plus { background: #fff; color: #4b5563; border-color: rgba(0,0,0,.12); }
+  body.light button { background: #111827; color: #fff; }
+  body.light .ghost { background: transparent; color: #374151; border-color: rgba(0,0,0,.16); }
+  body.light .chip { background: #fff; border-color: rgba(0,0,0,.1); color: #374151; }
+  body.light .sess.on, body.light .sess:active { background: #e9edf5; }
+  body.light .sess b { color: #0f1115; }
+  body.light .agent code, body.light .agent pre { background: #eef1f6; border-color: rgba(0,0,0,.08); }
+  body.light .sheet { background: rgba(245,247,250,.98); }
+  .icon-btn2 { width: 30px; padding: 0; height: 30px; font-size: 14px; font-weight: 400; }
 </style></head>
 <body>
-<header><span class="dot" id="dot"></span><b id="title">OT</b><span class="sub" id="sub">连接中…</span></header>
+<header><span class="dot" id="dot"></span><b id="title">OT</b><button id="theme" class="ghost icon-btn2">☾</button><button id="refresh" class="ghost icon-btn2">↻</button><span class="sub" id="sub">连接中…</span></header>
 <div id="log"></div>
 <footer>
   <div class="attach" id="attach"></div>
@@ -331,6 +346,27 @@ sendBtn.onclick = () => {
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBtn.click();
 });
+const themeBtn = document.getElementById('theme');
+const refreshBtn = document.getElementById('refresh');
+function applyTheme(t) {
+  document.body.classList.toggle('light', t === 'light');
+  themeBtn.textContent = t === 'light' ? '☀' : '☾';
+  localStorage.setItem('ot-theme', t);
+}
+applyTheme(localStorage.getItem('ot-theme') || 'dark');
+themeBtn.onclick = () => applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+refreshBtn.onclick = () => {
+  setStatus('重连中…');
+  try { if (ws) ws.close(); } catch (e) {}
+  setTimeout(connect, 300);
+};
+setInterval(() => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
+}, 20000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && (!ws || ws.readyState > 1)) connect();
+});
 connect();
 </script>
 </body></html>
+

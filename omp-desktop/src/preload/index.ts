@@ -35,6 +35,11 @@ const api: RendererApi = {
   remoteStart: () => ipcRenderer.invoke("remote:start"),
   remoteStop: () => ipcRenderer.invoke("remote:stop"),
   remoteTunnel: (on: boolean) => ipcRenderer.invoke("remote:tunnel", on),
+  onRemoteClients: (cb: (count: number) => void) => {
+    const handler = (_e: unknown, count: number) => cb(count);
+    ipcRenderer.on("remote:clients", handler as never);
+    return () => ipcRenderer.removeListener("remote:clients", handler as never);
+  },
   onRemoteTunnel: (cb: (status: unknown) => void) => {
     const handler = (_e: unknown, status: unknown) => cb(status);
     ipcRenderer.on("remote:tunnel", handler as never);
@@ -54,6 +59,7 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
 
 
 

@@ -592,6 +592,7 @@ if (!app.requestSingleInstanceLock()) {
           }
         },
         history: (id: string) => store?.read(id) ?? [],
+        onClients: (count: number) => win?.webContents.send("remote:clients", count),
         prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
           try {
             emit({ t: "user", text });
@@ -651,6 +652,7 @@ if (!app.requestSingleInstanceLock()) {
           }
         },
         history: (id: string) => store?.read(id) ?? [],
+        onClients: (count: number) => win?.webContents.send("remote:clients", count),
         permission: (id: string, optionId: string) => void session?.respondPermission(id, optionId),
         cancel: () => void session?.cancel(),
         snapshot: () => ({
@@ -757,6 +759,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 

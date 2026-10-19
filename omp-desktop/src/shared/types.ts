@@ -120,6 +120,12 @@ export type AppSettings = {
   tunnelMode: "quick" | "named" | "local";
   tunnelName: string;
   remoteToken: string;
+  reasoningDisplay: "full" | "summary" | "hidden";
+  bgShade: number;
+  bgBlur: number;
+  priceIn: number;
+  priceOut: number;
+  balanceStart: number;
   tunnelToken: string;
   tunnelHostname: string;
   sessionView: "grouped" | "flat";
@@ -176,6 +182,8 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
+
 
 
 

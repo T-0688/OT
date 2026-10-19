@@ -753,3 +753,25 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.1.0 → 1.2.0
 
 **坑**：`mobile-page.ts` 由 `mobile/index.html` 生成，改页面后必须 `node tools/gen-mobile-page.mjs` 再 `npm run build`，否则桌面端 serve 的还是旧页面。
+
+### 44. 1.3.0：按需求文档的批量改造（2026-10-19）
+
+完成：
+
+- 侧栏改成竖排导航：新建对话 / 技能 / 会话（带图标），会话列表在下方
+- 品牌行 OT 右侧加手机连接状态：绿=已连接、灰=未连接（由 WS 客户端数驱动）
+- 状态栏重做并常驻：状态、模型、上下文环 + 上限、tok/s、累计 token、第 N 轮、花费、剩余额度（可配初始余额/单价）
+- 每轮结束行：回退（含快照）、结束时间、fork（从该轮新开会话并回填输入）
+- 设置新增：推理显示（完整/摘要/隐藏）、背景遮罩与模糊滑杆、计费（输入/输出单价、初始余额）
+- 技能面板加「技能商店」按钮（链到 omp 仓库 skills 说明）
+- 手机端：右滑会话保持；修上传（Android onShowFileChooser）、主题切换、重连按钮、20s 心跳、回前台自动重连
+- 版本 1.2.0 → 1.3.0
+
+未做（需确认或较大）：
+
+- 自定义添加模型（当前模型来自 agent 的 configOptions）
+- GitHub 连接 + 按需自动上传
+- 技能中文简介（omp 返回的是英文描述，需要翻译源）
+- 背景材质（玻璃/磨砂）目前用「遮罩 + 模糊」近似
+
+**omp 里值得加的能力**（调研结果）：`--add-dir` 多目录、smol/slow/plan 三种模型角色、prewalk 自动切便宜模型、plan-yolo 自动批计划、--profile 多套配置、--models 快捷循环。

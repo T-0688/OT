@@ -14,6 +14,7 @@ export type RemoteHooks = {
   cancel: () => void;
   snapshot: () => { id: string; title: string; cwd: string; status: string; agent: string; model: string };
   history: (id: string) => AgentEvent[];
+  onClients?: (count: number) => void;
 };
 
 type ChatLine = { role: "user" | "agent" | "tool" | "note"; text: string };
@@ -194,6 +195,7 @@ export class RemoteServer {
       return;
     }
     this.clients.add(socket);
+    this.hooks.onClients?.(this.clients.size);
     const snap = this.hooks.snapshot();
     socket.send(
       JSON.stringify({
@@ -205,7 +207,10 @@ export class RemoteServer {
         history: this.history,
       }),
     );
-    socket.on("close", () => this.clients.delete(socket));
+    socket.on("close", () => {
+      this.clients.delete(socket);
+      this.hooks.onClients?.(this.clients.size);
+    });
     socket.on("message", (raw) => {
       try {
         const msg = JSON.parse(String(raw)) as { type?: string; text?: string; id?: string; optionId?: string; name?: string; data?: string; images?: { data: string; mimeType: string; name?: string }[] };
@@ -226,6 +231,7 @@ export class RemoteServer {
         }
         if (msg.type === "permission" && msg.id && msg.optionId) this.hooks.permission(msg.id, msg.optionId);
         if (msg.type === "cancel") this.hooks.cancel();
+        if (msg.type === "ping") socket.send(JSON.stringify({ t: "pong" }));
         if (msg.type === "sessions") {
           socket.send(JSON.stringify({ t: "sessions", list: this.hooks.sessions(), current: this.currentId }));
         }
@@ -263,6 +269,8 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
+
 
 
 

@@ -1,6 +1,7 @@
 package dev.omp.mobile;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
@@ -9,6 +10,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -24,6 +26,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "omp";
     private static final String KEY_URL = "url";
 
+    private static final int REQ_FILE = 1001;
+    private ValueCallback<Uri[]> fileCallback;
     private WebView web;
     private View splash;
     private LinearLayout setup;
@@ -95,7 +99,21 @@ public class MainActivity extends Activity {
                     }
                 }
             });
-            web.setWebChromeClient(new WebChromeClient());
+            web.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                                FileChooserParams params) {
+                    if (fileCallback != null) fileCallback.onReceiveValue(null);
+                    fileCallback = callback;
+                    try {
+                        startActivityForResult(params.createIntent(), REQ_FILE);
+                        return true;
+                    } catch (Exception e) {
+                        fileCallback = null;
+                        return false;
+                    }
+                }
+            });
             android.widget.FrameLayout root = new android.widget.FrameLayout(this);
             root.setBackgroundColor(Color.parseColor("#151517"));
             root.addView(web, new android.widget.FrameLayout.LayoutParams(
@@ -223,6 +241,30 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_FILE) {
+            Uri[] results = null;
+            if (resultCode == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int count = data.getClipData().getItemCount();
+                    results = new Uri[count];
+                    for (int i = 0; i < count; i++) {
+                        results[i] = data.getClipData().getItemAt(i).getUri();
+                    }
+                } else if (data.getData() != null) {
+                    results = new Uri[] { data.getData() };
+                }
+            }
+            if (fileCallback != null) {
+                fileCallback.onReceiveValue(results);
+                fileCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) {
             web.goBack();
@@ -231,6 +273,9 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 }
+
+
+
 
 
 

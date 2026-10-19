@@ -31,7 +31,7 @@ type Item =
       diff?: ToolDiff;
     }
   | { kind: "note"; id: string; text: string }
-  | { kind: "turn"; id: string; ms: number; tokens: number; at: number };
+  | { kind: "turn"; id: string; ms: number; tokens: number; at: number; userText?: string };
 
 type PendingPermission = { id: string; title: string; options: PermissionChoice[] };
 type Status = "connecting" | "ready" | "running" | "exited" | "error";
@@ -199,6 +199,8 @@ export default function App() {
   const sessionIdRef = useRef<string | null>(null);
   const turnIdRef = useRef<string>("");
   const snapshotted = useRef<Set<string>>(new Set());
+  const [phoneOnline, setPhoneOnline] = useState(false);
+  const [totalTokens, setTotalTokens] = useState(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number; cwd: string; name: string; pinned: boolean } | null>(null);
   const [wsEditing, setWsEditing] = useState<{ cwd: string; value: string } | null>(null);
@@ -331,6 +333,7 @@ export default function App() {
             }));
           }
           void refreshSessions();
+          setTotalTokens((n) => n + inp + cached + out);
           setItems((prev) => [
             ...prev,
             {
@@ -339,6 +342,7 @@ export default function App() {
               ms: Math.max(0, Math.round(seconds * 1000)),
               tokens: inp + cached + out,
               at: Date.now(),
+              userText: lastUser.current,
             },
           ]);
           break;
@@ -365,6 +369,16 @@ export default function App() {
     [flush, queue, refreshSessions],
   );
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--bg-shade", String(appSettings?.bgShade ?? 0.55));
+    root.style.setProperty("--bg-blur", `${appSettings?.bgBlur ?? 12}px`);
+  }, [appSettings?.bgShade, appSettings?.bgBlur]);
+  useEffect(() => {
+    const offClients = window.api.onRemoteClients((n) => setPhoneOnline(n > 0));
+    void window.api.remoteStatus().then((st) => { if (!st.running) setPhoneOnline(false); }).catch(() => {});
+    return offClients;
+  }, []);
   useEffect(() => {
     const off = window.api.onEvent(handleEvent);
     void (async () => {
@@ -655,6 +669,16 @@ export default function App() {
       snapshotted.current.clear();
     }
   }, [items]);
+  const turnCount = useMemo(() => items.filter((i) => i.kind === "turn").length + (running ? 1 : 0), [items, running]);
+  const ctxPct = usage.size ? Math.min(100, ((usage.used ?? 0) / usage.size) * 100) : 0;
+  const cost = useMemo(() => {
+    if (typeof usage.cost === "number" && usage.cost > 0) return usage.cost;
+    const pIn = appSettings?.priceIn ?? 0;
+    const pOut = appSettings?.priceOut ?? 0;
+    const inTok = stats.inputTokens ?? 0;
+    const outTok = stats.outputTokens ?? 0;
+    return (inTok * pIn + outTok * pOut) / 1_000_000;
+  }, [usage.cost, appSettings?.priceIn, appSettings?.priceOut, stats.inputTokens, stats.outputTokens]);
   const rails = useMemo(() => {
     const map = new Map<number, { path: string; name: string }[]>();
     let current: { path: string; name: string }[] = [];
@@ -778,6 +802,21 @@ export default function App() {
       hiddenWorkspaces: hidden,
     });
     setAppSettings(saved);
+  };
+  const forkTurn = async (turnId: string) => {
+    const idx = items.findIndex((i) => i.id === turnId);
+    if (idx < 0) return;
+    let userText = "";
+    for (let i = idx; i >= 0; i--) {
+      const it = items[i];
+      if (it.kind === "user") { userText = it.text; break; }
+    }
+    setItems([]);
+    setTotalTokens(0);
+    setDraft(userText);
+    setFailedText(null);
+    setRunning(false);
+    await window.api.start({ agentId, cwd });
   };
   const rollbackTurn = async (turnId: string) => {
     const idx = items.findIndex((i) => i.id === turnId);
@@ -973,24 +1012,35 @@ export default function App() {
           <div className="brand">
           <span className="logo" />
           <span className="brand-name">OT</span>
+          <span className={`phone-state ${phoneOnline ? "on" : ""}`} title={phoneOnline ? "手机已连接" : "手机未连接"}>
+            <Icon name="phone" size={12} />
+            {phoneOnline ? "已连接" : "未连接"}
+          </span>
           <span className={`dot ${status}`} />
         </div>
-          <button className="new-chat" onClick={() => void newSession()} title="开新会话 (Ctrl+N)">
-            <Icon name="plus" size={14} />
-            新会话
-          </button>
-          <div className="side-head">
-            <div className="side-tabs">
-              <button className={view === "chat" ? "on" : ""} onClick={() => setView("chat")}>
-                <Icon name="chat" size={14} />
-                会话
-              </button>
-              <button className={view === "skills" ? "on" : ""} onClick={() => setView("skills")}>
-                <Icon name="sparkle" size={14} />
-                技能
-              </button>
-            </div>
-            <button className="mini" onClick={() => setPaletteOpen(true)} title="命令面板 (Ctrl+K)">
+
+          <div className="side-nav">
+            <button className="nav-item" onClick={() => void newSession(agentId)} title="新建对话（Ctrl+N）">
+              <Icon name="plus" size={15} />
+              新建对话
+            </button>
+            <button
+              className={`nav-item ${view === "skills" ? "on" : ""}`}
+              onClick={() => setView("skills")}
+              title="技能（SKILL.md）"
+            >
+              <Icon name="sparkle" size={15} />
+              技能
+            </button>
+            <button
+              className={`nav-item ${view === "chat" ? "on" : ""}`}
+              onClick={() => setView("chat")}
+              title="会话"
+            >
+              <Icon name="chat" size={15} />
+              会话
+            </button>
+            <button className="nav-kbd" onClick={() => setPaletteOpen(true)} title="命令面板 (Ctrl+K)">
               ⌘K
             </button>
           </div>
@@ -1100,7 +1150,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.2.0</span>
+            <span className="version">v1.3.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1178,7 +1228,7 @@ export default function App() {
           ) : (
             items.map((item, i) => (
               <Fragment key={item.id}>
-                <Message item={item} onRollback={(id) => void rollbackTurn(id)} />
+                <Message item={item} onRollback={(id) => void rollbackTurn(id)} onFork={(id) => void forkTurn(id)} reasoning={appSettings?.reasoningDisplay ?? "summary"} />
                 {rails.get(i)?.length ? (
                   <FileRail
                     files={rails.get(i)!}
@@ -1447,7 +1497,7 @@ export default function App() {
           </div>
         </div>
 
-<div className="statusbar">
+        <div className="statusbar">
           <span className={`state ${status}`}>
             {status === "ready"
               ? "就绪"
@@ -1459,26 +1509,46 @@ export default function App() {
                     ? "已退出"
                     : "出错"}
           </span>
-          {modelLabel ? <span className="stat">· {modelLabel}</span> : null}
+          {modelLabel ? <span className="stat">{modelLabel}</span> : null}
+          <span className="stat ring-stat" title={`上下文 ${fmtTokens(usage.used ?? 0)} / ${usage.size ? fmtTokens(usage.size) : "?"}`}>
+            <svg width="16" height="16" viewBox="0 0 16 16" className="ctx-ring">
+              <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" />
+              <circle
+                cx="8"
+                cy="8"
+                r="6.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={`${Math.min(100, ctxPct) * 0.402} 100`}
+                transform="rotate(-90 8 8)"
+              />
+            </svg>
+            {usage.size ? fmtTokens(usage.size) : "—"}
+            <span className="muted">{ctxPct.toFixed(0)}%</span>
+          </span>
           {stats.speed ? (
-            <span className="stat" title={`本回合输出 ${stats.outputTokens} tokens`}>
-              · {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
+            <span className="stat" title="本回合输出速度">
+              {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
             </span>
           ) : null}
-          {typeof stats.cachePct === "number" ? (
-            <span className="stat" title="缓存命中率">
-              · 缓存 {stats.cachePct.toFixed(0)}%
+          <span className="stat" title="累计消耗 tokens">
+            {fmtTokens(totalTokens)} tok
+          </span>
+          <span className="stat" title="会话轮次">
+            第 {turnCount} 轮
+          </span>
+          <span className="stat" title="本次会话花费">
+            ${cost.toFixed(4)}
+          </span>
+          {(appSettings?.balanceStart ?? 0) > 0 ? (
+            <span className="stat balance" title="剩余额度（设置里可改初始余额）">
+              余 ${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}
             </span>
           ) : null}
-          {usage.used ? (
-            <span className="stat" title="当前上下文占用 / 上限">
-              · 上下文 {fmtTokens(usage.used)}
-              {usage.size ? ` / ${fmtTokens(usage.size)}（${((usage.used / usage.size) * 100).toFixed(1)}%）` : ""}
-            </span>
-          ) : null}
-          {typeof usage.cost === "number" ? <span className="stat">· ${usage.cost.toFixed(4)}</span> : null}
           <span className="spacer" />
-          <span>ACP · {agentId}</span>
+          <span className="stat muted">ACP · {agentId}</span>
         </div>
       </footer>
       </div>
@@ -1780,6 +1850,29 @@ function Icon({ name, size = 15 }: { name: string; size?: number }) {
           <circle cx="10" cy="10.8" r="1.6" fill="var(--panel)" />
         </svg>
       );
+    case "undo":
+      return (
+        <svg {...common}>
+          <path d="M3.2 6.4h6.1a3.2 3.2 0 0 1 0 6.4H6" />
+          <path d="M5.4 3.9 2.9 6.4l2.5 2.5" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...common}>
+          <rect x="4.6" y="1.8" width="6.8" height="12.4" rx="1.8" />
+          <path d="M7 13.2h2" />
+        </svg>
+      );
+    case "fork":
+      return (
+        <svg {...common}>
+          <circle cx="4.5" cy="3.5" r="1.6" />
+          <circle cx="4.5" cy="12.5" r="1.6" />
+          <circle cx="11.5" cy="6" r="1.6" />
+          <path d="M4.5 5.1v5.8M6.1 3.9h2.6c1.2 0 2 .8 2 2v.2" />
+        </svg>
+      );
     case "shield":
       return (
         <svg {...common}>
@@ -1896,7 +1989,7 @@ function FileRail({
     </div>
   );
 }
-function Message({ item, onRollback }: { item: Item; onRollback?: (id: string) => void }) {
+function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: Item; onRollback?: (id: string) => void; onFork?: (id: string) => void; reasoning?: "full" | "summary" | "hidden" }) {
   if (item.kind === "user") {
     return (
       <div className="msg user" id={`turn-${item.id}`}>
@@ -1917,6 +2010,7 @@ function Message({ item, onRollback }: { item: Item; onRollback?: (id: string) =
   }
 
   if (item.kind === "turn") {
+    const at = new Date(item.at);
     return (
       <div className="turn-meta">
         <span className="turn-check">✓</span>
@@ -1925,8 +2019,15 @@ function Message({ item, onRollback }: { item: Item; onRollback?: (id: string) =
         <span>用时 {fmtDuration(item.ms)}</span>
         <span className="turn-sep">·</span>
         <span>{fmtTokens(item.tokens)} tok</span>
-        <button className="turn-btn" onClick={() => onRollback?.(item.id)} title="回退到这一轮之前">
+        <span className="turn-sep">·</span>
+        <span>{at.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+        <button className="turn-btn" onClick={() => onRollback?.(item.id)} title="回退到这一轮之前（含文件快照）">
+          <Icon name="undo" size={12} />
           回退
+        </button>
+        <button className="turn-btn" onClick={() => onFork?.(item.id)} title="从这一轮 fork 一个新对话">
+          <Icon name="fork" size={12} />
+          fork
         </button>
       </div>
     );
@@ -1935,8 +2036,8 @@ function Message({ item, onRollback }: { item: Item; onRollback?: (id: string) =
   if (item.kind === "assistant") {
     return (
       <div className="msg assistant">
-        {item.thinking ? (
-          <details className="thinking">
+        {item.thinking && reasoning !== "hidden" ? (
+          <details className="thinking" open={reasoning === "full"}>
             <summary>思考过程</summary>
             <div className="thinking-body">{item.thinking}</div>
           </details>
@@ -2038,6 +2139,10 @@ function SkillsPanel({
           </p>
         </div>
         <div className="panel-actions">
+          <button className="pill-btn" onClick={() => void window.api.openPath("https://github.com/can1357/oh-my-pi#skills")}>
+            <Icon name="sparkle" size={13} />
+            技能商店
+          </button>
           <button className="ghost" onClick={onReload}>
             刷新
           </button>
@@ -2252,6 +2357,42 @@ function SettingsPanel({
           </div>
         </div>
         <div className="set-row">
+          <label>推理显示</label>
+          <div className="seg">
+            {(["full", "summary", "hidden"] as const).map((mode) => (
+              <button
+                key={mode}
+                className={settings.reasoningDisplay === mode ? "on" : ""}
+                onClick={() => onChange({ reasoningDisplay: mode })}
+              >
+                {mode === "full" ? "完整" : mode === "summary" ? "摘要" : "隐藏"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="set-row">
+          <label>背景遮罩</label>
+          <input
+            type="range"
+            min={10}
+            max={95}
+            value={Math.round((settings.bgShade ?? 0.55) * 100)}
+            onChange={(e) => onChange({ bgShade: Number(e.target.value) / 100 })}
+          />
+          <span className="set-hint">{Math.round((settings.bgShade ?? 0.55) * 100)}%</span>
+        </div>
+        <div className="set-row">
+          <label>背景模糊</label>
+          <input
+            type="range"
+            min={0}
+            max={40}
+            value={settings.bgBlur ?? 12}
+            onChange={(e) => onChange({ bgBlur: Number(e.target.value) })}
+          />
+          <span className="set-hint">{settings.bgBlur ?? 12}px</span>
+        </div>
+        <div className="set-row">
           <label>界面缩放</label>
           <div className="seg">
             {[0.9, 1, 1.1].map((z) => (
@@ -2409,6 +2550,40 @@ function SettingsPanel({
         </div>
       </section>
       <section className="set-group">
+        <h3>计费</h3>
+        <div className="set-row">
+          <label>输入价格（$ / 1M）</label>
+          <input
+            className="grow"
+            type="number"
+            step="0.01"
+            value={settings.priceIn ?? 0}
+            onChange={(e) => onChange({ priceIn: Number(e.target.value) })}
+          />
+        </div>
+        <div className="set-row">
+          <label>输出价格（$ / 1M）</label>
+          <input
+            className="grow"
+            type="number"
+            step="0.01"
+            value={settings.priceOut ?? 0}
+            onChange={(e) => onChange({ priceOut: Number(e.target.value) })}
+          />
+        </div>
+        <div className="set-row">
+          <label>初始余额（$）</label>
+          <input
+            className="grow"
+            type="number"
+            step="1"
+            value={settings.balanceStart ?? 0}
+            onChange={(e) => onChange({ balanceStart: Number(e.target.value) })}
+          />
+        </div>
+        <div className="set-hint">填了初始余额，状态栏会显示「余 $x.xx」。价格填 0 时用 agent 回报的金额。</div>
+      </section>
+      <section className="set-group">
         <h3>通知</h3>
         <div className="set-row">
           <label>回合完成时通知</label>
@@ -2451,6 +2626,21 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
