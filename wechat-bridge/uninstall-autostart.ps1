@@ -1,10 +1,15 @@
-# 移除 OT 微信桥接的开机自启
-$taskName = "OT-WeChat-Bridge"
-$task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($task) {
-  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-  Write-Host "已移除计划任务：$taskName"
+# Remove OT WeChat bridge autostart (Startup folder entry).
+$startup = [Environment]::GetFolderPath("Startup")
+$vbsPath = Join-Path $startup "OT-WeChat-Bridge.vbs"
+if (Test-Path $vbsPath) {
+  Remove-Item $vbsPath -Force
+  Write-Host "Removed: $vbsPath"
 } else {
-  Write-Host "没有找到计划任务：$taskName"
+  Write-Host "Not installed."
 }
+
+# Stop running bridge processes
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*bridge.mjs*" } | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
+Write-Host "Stopped bridge processes."
