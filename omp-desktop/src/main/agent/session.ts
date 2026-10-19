@@ -21,6 +21,12 @@ export class AgentSession {
   private onReady: ((id: string) => void) | null = null;
   private onError: ((err: unknown) => void) | null = null;
 
+  private extraArgs: string[] = [];
+
+  setExtraArgs(args: string[]): void {
+    this.extraArgs = args;
+  }
+
   constructor(
     private readonly agent: AgentDef,
     private readonly emit: Emit,
@@ -53,7 +59,7 @@ export class AgentSession {
   }
 
   private async run(cwd: string, resumeId?: string): Promise<void> {
-    const child = spawn(this.agent.command, this.agent.args, {
+    const child = spawn(this.agent.command, [...this.agent.args, ...this.extraArgs], {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
@@ -328,6 +334,8 @@ function collectDiff(content: any): ToolDiff | undefined {
   }
   return undefined;
 }
+
+
 
 
 

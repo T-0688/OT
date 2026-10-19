@@ -29,6 +29,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   priceIn: 0,
   priceOut: 0,
   balanceStart: 0,
+  extraDirs: [],
+  prewalk: false,
   tunnelToken: "",
   tunnelHostname: "",
   sessionView: "grouped",
@@ -73,6 +75,7 @@ export class SettingsStore {
     return this.current;
   }
 }
+
 
 
 

@@ -1150,7 +1150,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.3.0</span>
+            <span className="version">v1.4.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1509,7 +1509,7 @@ export default function App() {
                     ? "已退出"
                     : "出错"}
           </span>
-          {modelLabel ? <span className="stat">{modelLabel}</span> : null}
+          {modelLabel ? <span className="stat model">{modelLabel}</span> : null}
           <span className="stat ring-stat" title={`上下文 ${fmtTokens(usage.used ?? 0)} / ${usage.size ? fmtTokens(usage.size) : "?"}`}>
             <svg width="16" height="16" viewBox="0 0 16 16" className="ctx-ring">
               <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" />
@@ -1542,11 +1542,9 @@ export default function App() {
           <span className="stat" title="本次会话花费">
             ${cost.toFixed(4)}
           </span>
-          {(appSettings?.balanceStart ?? 0) > 0 ? (
-            <span className="stat balance" title="剩余额度（设置里可改初始余额）">
-              余 ${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}
-            </span>
-          ) : null}
+          <span className="stat balance" title="剩余额度＝初始余额－已花费（设置 → 计费里可改初始余额）">
+            余 ${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}
+          </span>
           <span className="spacer" />
           <span className="stat muted">ACP · {agentId}</span>
         </div>
@@ -2108,6 +2106,48 @@ function DiffView({ diff }: { diff: ToolDiff }) {
   );
 }
 
+const SKILL_ZH: Record<string, string> = {
+  "1password": "1Password CLI：安装、登录、读取/注入密钥",
+  "aminer-data-search": "AMiner 学术检索：学者、论文、机构、期刊、专利",
+  "architecture-designer": "系统架构设计与评审、技术选型",
+  "automation-workflows": "设计自动化工作流，减少重复劳动",
+  "backtest-expert": "交易策略回测方法与稳健性检验",
+  "blog-writer": "按你的风格写博客长文并发布",
+  "brainstorming": "动手前先梳理需求与方案",
+  "clawdefender": "提示注入/命令注入等安全检测与净化",
+  "code": "编码流程：计划、实现、验证、测试",
+  "content-strategy": "内容营销策略与选题日历",
+  "copywriting": "落地页/邮件/广告的转化文案",
+  "executing-plans": "按既定实施计划分步执行并检查",
+  "feishu-chat-history": "拉取并总结飞书群聊记录",
+  "feishu-cron-reminder": "定时把提醒发到飞书",
+  "feishu-doc": "读取飞书文档/表格并转 Markdown",
+  "feishu-perm": "飞书文档与文件的权限管理",
+  "feishu-screenshot": "截图并发送到飞书",
+  "feishu-send-file": "通过 API 向飞书发送文件",
+  "ffmpeg-video-editor": "用自然语言生成 ffmpeg 剪辑命令",
+  "find-skills": "发现并安装新的 agent 技能",
+  "frontend-design": "产出有设计感的前端界面",
+  "git-essentials": "Git 常用命令与分支协作",
+  "interview-designer": "依据简历设计结构化面试",
+  "market-research": "市场规模、竞品与机会评估",
+  "obsidian-ontology-sync": "Obsidian 笔记与本体图谱双向同步",
+  "opencode-controller": "用斜杠命令驱动 Opencode",
+  "research-paper-writer": "按 IEEE/ACM 规范撰写学术论文",
+  "security-auditor": "代码安全审计（OWASP、鉴权、注入等）",
+  "self-improving": "复盘纠错，从反馈中持续改进",
+  "seo": "SEO 审计、关键词与内容优化",
+  "seo-content-writer": "写 SEO 友好的博客与文章",
+  "session-logs": "检索并分析历史会话日志",
+  "skill-creator": "创建或更新技能（SKILL.md）",
+  "skill-vetter": "安装技能前的安全审查",
+  "social-content": "社交媒体内容策划与排期",
+  "supabase-postgres-best-practices": "Supabase / Postgres 性能最佳实践",
+  "tmux": "远程操控 tmux 会话",
+  "ui-ux-pro-max": "UI/UX 设计规范与界面打磨建议",
+  "video-frames": "用 ffmpeg 抽帧或截取片段",
+  "writing-plans": "把需求写成可执行的分步计划",
+};
 function SkillsPanel({
   skills,
   query,
@@ -2168,7 +2208,8 @@ function SkillsPanel({
                 {s.name}
                 <span className="skill-source">{s.source.replace("agents:", "")}</span>
               </div>
-              <div className="skill-desc">{s.description || "（无描述）"}</div>
+              <div className="skill-desc zh">{SKILL_ZH[s.name] ?? s.description}</div>
+              {SKILL_ZH[s.name] ? <div className="skill-desc orig">{s.description}</div> : null}
               <div className="skill-path">{s.baseDir}</div>
             </div>
             <div className="skill-actions">
@@ -2307,6 +2348,48 @@ function SettingsPanel({
                 </option>
               ))}
           </select>
+        </div>
+        <div className="set-row">
+          <label>附加目录</label>
+          <div className="set-inline">
+            <button
+              className="ghost"
+              onClick={async () => {
+                const dir = await window.api.pickDirectory();
+                if (!dir) return;
+                const next = [...(settings.extraDirs ?? [])];
+                if (!next.includes(dir)) next.push(dir);
+                onChange({ extraDirs: next });
+              }}
+            >
+              添加目录…
+            </button>
+            <span className="set-hint">agent 可访问的工作区之外目录（omp --add-dir）</span>
+          </div>
+        </div>
+        {(settings.extraDirs ?? []).map((dir) => (
+          <div className="set-row" key={dir}>
+            <label />
+            <div className="set-inline">
+              <input readOnly value={dir} className="grow" />
+              <button
+                className="ghost danger"
+                onClick={() => onChange({ extraDirs: (settings.extraDirs ?? []).filter((d) => d !== dir) })}
+              >
+                移除
+              </button>
+            </div>
+          </div>
+        ))}
+        <div className="set-row">
+          <label>prewalk（省 token）</label>
+          <label className="switch">
+            <input type="checkbox" checked={settings.prewalk} onChange={(e) => onChange({ prewalk: e.target.checked })} />
+            <span>{settings.prewalk ? "开启" : "关闭"}</span>
+          </label>
+        </div>
+        <div className="set-hint">
+          prewalk 会在计划阶段结束后自动切到便宜模型执行，省 token；需要配置 smol 模型（omp --smol）。
         </div>
         <div className="set-row">
           <label>默认工作目录</label>
@@ -2626,6 +2709,10 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 

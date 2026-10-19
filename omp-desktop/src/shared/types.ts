@@ -126,6 +126,8 @@ export type AppSettings = {
   priceIn: number;
   priceOut: number;
   balanceStart: number;
+  extraDirs: string[];
+  prewalk: boolean;
   tunnelToken: string;
   tunnelHostname: string;
   sessionView: "grouped" | "flat";
@@ -182,6 +184,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

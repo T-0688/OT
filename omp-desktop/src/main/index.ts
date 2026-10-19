@@ -29,6 +29,16 @@ let currentSessionId: string | null = null;
 let currentAgentId = "omp";
 let sessionCwd = process.env.OMP_CWD ?? process.cwd();
 
+function agentExtraArgs(): string[] {
+  const cfg = settings?.get();
+  const args: string[] = [];
+  for (const dir of cfg?.extraDirs ?? []) {
+    if (dir && existsSync(dir)) args.push(`--add-dir=${dir}`);
+  }
+  if (cfg?.prewalk) args.push("--prewalk");
+  return args;
+}
+
 function emit(event: AgentEvent): void {
   if (event.t === "ready") {
     currentSessionId = event.sessionId;
@@ -585,6 +595,7 @@ if (!app.requestSingleInstanceLock()) {
             currentAgentId = meta.agentId;
             currentSessionId = id;
             session = new AgentSession(findAgent(meta.agentId), emit);
+        session.setExtraArgs(agentExtraArgs());
             await session.resume(id, meta.cwd);
             return { ok: true, title: meta.title };
           } catch (err: any) {
@@ -636,6 +647,7 @@ if (!app.requestSingleInstanceLock()) {
             currentAgentId = meta.agentId;
             currentSessionId = id;
             session = new AgentSession(findAgent(meta.agentId), emit);
+        session.setExtraArgs(agentExtraArgs());
             await session.resume(id, meta.cwd);
             return { ok: true, title: meta.title };
           } catch (err: any) {
@@ -759,6 +771,8 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
 
 
 

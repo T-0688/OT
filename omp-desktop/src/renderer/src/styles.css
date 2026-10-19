@@ -3892,3 +3892,62 @@ body {
 [data-theme="light"] .bg-shade {
   background: rgba(245, 247, 250, var(--bg-shade, 0.55)) !important;
 }
+
+/* ---------- 状态栏排版与配色 ---------- */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--text) 88%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar .state {
+  flex: 0 0 auto;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--ok) 72%, var(--text));
+  letter-spacing: 0.02em;
+}
+
+.statusbar .stat {
+  flex: 1 1 0;
+  text-align: center;
+  color: color-mix(in srgb, var(--text) 82%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusbar .stat.muted {
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.statusbar .balance {
+  color: color-mix(in srgb, var(--ok) 78%, var(--text));
+}
+
+.statusbar .ring-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 技能中文简介 */
+.skill-desc.zh {
+  color: color-mix(in srgb, var(--text) 90%, transparent);
+  font-size: 12.5px;
+}
+
+.skill-desc.orig {
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+  font-size: 11px;
+}
+
+.statusbar .stat.model {
+  flex: 0 0 auto;
+  text-align: left;
+  color: color-mix(in srgb, var(--text) 92%, transparent);
+}
