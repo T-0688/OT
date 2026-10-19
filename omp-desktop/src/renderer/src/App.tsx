@@ -1340,7 +1340,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.30.0</span>
+            <span className="version">v1.31.1</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -3147,6 +3147,9 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
 
 
 

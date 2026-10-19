@@ -1116,3 +1116,22 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.29.0 → 1.30.0
 
 **验证**：`node bridge.mjs ask "pwd，只回路径"` → `{"text":"D:\\.Daily\\ot-wechat","label":"【ot-wechat】"}`；再问工作区回答一致。
+
+### 75. 1.31.1：微信独立实例，桌面/微信各跑各的（2026-10-19）
+
+单会话架构下，微信切换工作区会带着桌面一起切。改成**双实例**：
+
+- 新增环境变量 `OT_INSTANCE=wechat` → `HEADLESS` 模式：
+  - **ready 之前** `app.setPath("userData", %APPDATA%\ot-wechat-instance)`（否则 Chromium ProcessSingleton 会把第二实例踢掉，实测直接 exit 0）
+  - 跳过 `requestSingleInstanceLock()`
+  - 窗口 `show:false` + `hide()` + `setSkipTaskbar(true)`
+  - 设置强制 `remoteEnabled: true, remotePort: 7789, approvalMode: "auto"`
+  - 启动 1.2s 后自动开一个会话，cwd 取 `OT_CWD`（默认 `D:\.Daily\ot-wechat`）
+  - 跳过从旧目录迁移数据，避免把桌面会话灌进来
+- 桥接 `otConfig()` 读取优先级：`data/config.json` → 实例 settings → 桌面 settings
+- `data/config.json` 增加 `otPort: 7789`
+- 新增 `start-ot-wechat.cmd`（设环境变量后启动 OT），启动项 `OT-WeChat-Instance.vbs` 隐藏拉起
+- `install-autostart.ps1` 同时安装「微信实例 + 桥接」两个启动项
+- 版本 1.31.0 → 1.31.1（APK 本次不构建）
+
+**验证**：7788/7789 同时监听；桌面 WS 切到「网站」会话后，微信实例仍为 `D:\.Daily\ot-wechat`；`bridge.mjs ask "pwd"` 走 7789 返回 `D:/.Daily/ot-wechat`。

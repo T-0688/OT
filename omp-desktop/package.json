@@ -1,6 +1,6 @@
 {
   "name": "ot",
-  "version": "1.30.0",
+  "version": "1.31.1",
   "private": true,
   "type": "module",
   "description": "A local desktop client for ACP coding agents (oh-my-pi / omp)",
@@ -76,6 +76,8 @@
     "electronDist": "node_modules/electron/dist"
   }
 }
+
+
 
 
 

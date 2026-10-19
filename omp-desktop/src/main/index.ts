@@ -208,6 +208,11 @@ function createWindow(): void {
     },
   });
 
+  if (HEADLESS) {
+    win.hide();
+    win.setSkipTaskbar(true);
+  }
+
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(import.meta.dirname, "../renderer/index.html"));
@@ -428,6 +433,15 @@ function ghCredential(): { user: string; token: string } | null {
   } catch {
     return null;
   }
+}
+
+const OT_INSTANCE = process.env.OT_INSTANCE ?? "";
+/** 微信专用实例：独立数据目录、独立端口、无窗口、自动开一个会话 */
+const HEADLESS = OT_INSTANCE === "wechat";
+
+// 必须在 ready 之前设置 userData，否则 Chromium 的 ProcessSingleton 会把第二个实例踢掉
+if (HEADLESS) {
+  app.setPath("userData", join(app.getPath("appData"), "ot-wechat-instance"));
 }
 
 const SENSITIVE_PATTERNS = [
@@ -708,9 +722,9 @@ app.on("second-instance", () => {
       win?.webContents.send("screenshot:capture", base64);
     });
     // 数据目录统一为 OT；把旧的 omp-desktop 内容合并进来（只补不删）
-    const dataDir = join(app.getPath("appData"), "OT");
+    const dataDir = join(app.getPath("appData"), HEADLESS ? "ot-wechat-instance" : "OT");
     const legacyDir = join(app.getPath("appData"), "omp-desktop");
-    if (existsSync(legacyDir) && !existsSync(join(dataDir, "settings.json"))) {
+    if (!HEADLESS && existsSync(legacyDir) && !existsSync(join(dataDir, "settings.json"))) {
       // 只迁移我们自己的数据（仅首次），避免碰到 Chromium 正在占用的缓存/锁文件
       for (const item of ["settings.json", "sessions", "checkpoints", "bin"]) {
         const from = join(legacyDir, item);
@@ -744,6 +758,9 @@ app.on("second-instance", () => {
     settings = new SettingsStore(join(app.getPath("userData"), "settings.json"));
     if (!settings.get().remoteToken) {
       settings.save({ remoteToken: randomBytes(12).toString("hex") });
+    }
+    if (HEADLESS) {
+      settings.save({ remoteEnabled: true, remotePort: 7789, approvalMode: "auto" });
     }
     store = new SessionStore(app.getPath("userData"));
     store.init();
@@ -952,6 +969,25 @@ app.on("second-instance", () => {
       tunnelUrl: tunnel?.url ?? null,
       error: tunnel?.error ?? null,
     });
+
+    // 微信专用实例：启动时直接开一个会话，工作目录由 OT_CWD 指定
+    if (HEADLESS) {
+      setTimeout(async () => {
+        try {
+          const cwd = process.env.OT_CWD || "D:\\\\.Daily\\\\ot-wechat";
+          const cfg = settings!.get();
+          const agent = findAgent(cfg.defaultAgent);
+          sessionCwd = cwd;
+          currentAgentId = agent.id;
+          session = new AgentSession(agent, emit);
+          session.setAutoApprove(true);
+          session.setExtraArgs(agentExtraArgs());
+          await session.start(cwd);
+        } catch (err) {
+          console.error("headless session start failed", err);
+        }
+      }, 1200);
+    }
 
     // 开机/重启后自动恢复手机访问
     setTimeout(() => {
@@ -1240,6 +1276,11 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
+
+
+
 
 
 
