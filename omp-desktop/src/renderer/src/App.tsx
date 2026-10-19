@@ -70,6 +70,8 @@ function applyToItems(items: Item[], ev: AgentEvent): Item[] {
   switch (ev.t) {
     case "user":
       return [...closeAssistant(items), { kind: "user", id: uid("u"), text: ev.text, images: ev.images }];
+    case "note":
+      return [...closeAssistant(items), { kind: "note", id: uid("n"), text: ev.text }];
     case "text":
       return appendAssistant(items, ev.text);
     case "thinking":
@@ -200,6 +202,7 @@ export default function App() {
   const turnIdRef = useRef<string>("");
   const snapshotted = useRef<Set<string>>(new Set());
   const [phoneOnline, setPhoneOnline] = useState(false);
+  const [balance, setBalance] = useState<{ total?: number; currency?: string }>({});
   const [totalTokens, setTotalTokens] = useState(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number; cwd: string; name: string; pinned: boolean } | null>(null);
@@ -374,6 +377,17 @@ export default function App() {
     root.style.setProperty("--bg-shade", String(appSettings?.bgShade ?? 0.55));
     root.style.setProperty("--bg-blur", `${appSettings?.bgBlur ?? 12}px`);
   }, [appSettings?.bgShade, appSettings?.bgBlur]);
+  useEffect(() => {
+    const load = () => {
+      void window.api
+        .getBalance()
+        .then((r) => setBalance(r.ok ? { total: r.total, currency: r.currency } : {}))
+        .catch(() => setBalance({}));
+    };
+    load();
+    const timer = setInterval(load, 120_000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     const offClients = window.api.onRemoteClients((n) => setPhoneOnline(n > 0));
     void window.api.remoteStatus().then((st) => { if (!st.running) setPhoneOnline(false); }).catch(() => {});
@@ -1150,7 +1164,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.4.0</span>
+            <span className="version">v1.5.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1533,6 +1547,9 @@ export default function App() {
               {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
             </span>
           ) : null}
+          {typeof stats.cachePct === "number" ? (
+            <span className="stat" title="缓存命中率">缓存 {stats.cachePct.toFixed(0)}%</span>
+          ) : null}
           <span className="stat" title="累计消耗 tokens">
             {fmtTokens(totalTokens)} tok
           </span>
@@ -1542,8 +1559,8 @@ export default function App() {
           <span className="stat" title="本次会话花费">
             ${cost.toFixed(4)}
           </span>
-          <span className="stat balance" title="剩余额度＝初始余额－已花费（设置 → 计费里可改初始余额）">
-            余 ${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}
+          <span className="stat balance" title={balance.total != null ? "DeepSeek 账户余额（实时查询）" : "剩余额度＝初始余额－已花费（设置里可改）"}>
+            {balance.total != null ? `余 ${balance.total.toFixed(2)} ${balance.currency ?? ""}` : `余 $${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}`}
           </span>
           <span className="spacer" />
           <span className="stat muted">ACP · {agentId}</span>
@@ -2267,6 +2284,11 @@ function SettingsPanel({
     error: null,
   });
   const [tunnelOn, setTunnelOn] = useState(false);
+  const [cmName, setCmName] = useState("");
+  const [cmBase, setCmBase] = useState("");
+  const [cmId, setCmId] = useState("");
+  const [cmKey, setCmKey] = useState("");
+  const [cmMsg, setCmMsg] = useState("");
 
   useEffect(() => {
     void window.api.appVersion().then(setVersion).catch(() => setVersion(""));
@@ -2406,6 +2428,80 @@ function SettingsPanel({
         </div>
       </section>
 
+      <section className="set-group">
+        <h3>模型角色</h3>
+        <div className="set-row">
+          <label>smol（轻任务）</label>
+          <input className="grow" placeholder="例如 deepseek/deepseek-flash" value={settings.smolModel} onChange={(e) => onChange({ smolModel: e.target.value })} />
+        </div>
+        <div className="set-row">
+          <label>slow（深度推理）</label>
+          <input className="grow" placeholder="例如 deepseek/deepseek-reasoner" value={settings.slowModel} onChange={(e) => onChange({ slowModel: e.target.value })} />
+        </div>
+        <div className="set-row">
+          <label>plan（规划）</label>
+          <input className="grow" placeholder="留空跟随默认" value={settings.planModel} onChange={(e) => onChange({ planModel: e.target.value })} />
+        </div>
+        <div className="set-hint">写入启动参数 --smol / --slow / --plan；agent 会按任务自动挑模型。</div>
+      </section>
+
+      <section className="set-group">
+        <h3>自定义模型（OpenAI 兼容）</h3>
+        {(settings.customModels ?? []).map((m) => (
+          <div className="set-row" key={m.name}>
+            <label>{m.name}</label>
+            <span className="set-hint">{m.modelId} · {m.baseUrl}</span>
+          </div>
+        ))}
+        <div className="set-row">
+          <label>名称</label>
+          <input className="grow" placeholder="my-model" value={cmName} onChange={(e) => setCmName(e.target.value)} />
+        </div>
+        <div className="set-row">
+          <label>Base URL</label>
+          <input className="grow" placeholder="https://api.example.com/v1" value={cmBase} onChange={(e) => setCmBase(e.target.value)} />
+        </div>
+        <div className="set-row">
+          <label>模型 ID</label>
+          <input className="grow" placeholder="gpt-4o-mini" value={cmId} onChange={(e) => setCmId(e.target.value)} />
+        </div>
+        <div className="set-row">
+          <label>API Key</label>
+          <input className="grow" type="password" placeholder="sk-..." value={cmKey} onChange={(e) => setCmKey(e.target.value)} />
+        </div>
+        <div className="set-row">
+          <label />
+          <div className="set-inline">
+            <button
+              className="ghost"
+              onClick={async () => {
+                const res = await window.api.addCustomModel({ name: cmName, baseUrl: cmBase, apiKey: cmKey, modelId: cmId, api: "openai-completions" });
+                if (!res.ok) { setCmMsg(res.error ?? "失败"); return; }
+                const next = [...(settings.customModels ?? []), { name: cmName, baseUrl: cmBase, apiKey: cmKey, modelId: cmId, api: "openai-completions" }];
+                onChange({ customModels: next });
+                setCmName(""); setCmBase(""); setCmId(""); setCmKey("");
+                setCmMsg("已写入 models.yml，重开会话后可用");
+              }}
+            >
+              添加到 models.yml
+            </button>
+            {cmMsg ? <span className="set-hint">{cmMsg}</span> : null}
+          </div>
+        </div>
+        <div className="set-hint">写入 ~/.omp/agent/models.yml（会留 .bak 备份），之后在模型下拉里出现。</div>
+      </section>
+
+      <section className="set-group">
+        <h3>GitHub</h3>
+        <div className="set-row">
+          <label>自动上传</label>
+          <label className="switch">
+            <input type="checkbox" checked={settings.githubAutoUpload} onChange={(e) => onChange({ githubAutoUpload: e.target.checked })} />
+            <span>{settings.githubAutoUpload ? "开启" : "关闭"}</span>
+          </label>
+        </div>
+        <div className="set-hint">开启后：会话里你说过「上传/推送到 GitHub」，之后每轮结束会自动 commit + push；没有远端仓库时会用本机 git 凭据自动建一个公开仓库。</div>
+      </section>
       <section className="set-group">
         <h3>外观</h3>
         <div className="set-row">
@@ -2655,6 +2751,15 @@ function SettingsPanel({
           />
         </div>
         <div className="set-row">
+          <label>DeepSeek API Key</label>
+          <input
+            className="grow"
+            type="password"
+            placeholder="sk-...（用于实时查询余额）"
+            value={settings.deepseekApiKey}
+            onChange={(e) => onChange({ deepseekApiKey: e.target.value })}
+          />
+        </div>        <div className="set-row">
           <label>初始余额（$）</label>
           <input
             className="grow"
@@ -2709,6 +2814,10 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 

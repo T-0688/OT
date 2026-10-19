@@ -786,3 +786,15 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.3.0 → 1.4.0
 
 **未做**：自定义模型、GitHub 连接（等用户给仓库与凭据方案）；玻璃质感按用户要求跳过。
+
+### 46. 1.5.0：模型角色、自定义模型、余额查询、GitHub 自动上传（2026-10-19）
+
+- **模型角色**：设置里填 smol / slow / plan，启动参数 `--smol=/--slow=/--plan=` 传给 `omp acp`
+- **自定义模型**：填名称/BaseURL/模型ID/API Key → 追加到 `~/.omp/agent/models.yml` 的 `providers:` 下（写前留 `.bak`），重开会话后在模型下拉出现
+- **余额**：设置里填 DeepSeek API Key，主进程调 `https://api.deepseek.com/user/balance`，状态栏显示 `余 X CNY`；没有 key 时回退到「初始余额 - 花费」
+- **缓存命中率**：状态栏新增 `缓存 NN%`
+- **GitHub 自动上传**：设置开关；会话里出现「上传/推送/提交 + github」意图后，该会话后续每轮结束执行 `git add/commit/push`；没有 origin 时用本机 `git credential` 的 token 通过 API 新建公开仓库并推送
+- 新增 `note` 事件类型，用于把「已上传到 xxx」这类提示插进对话
+- 版本 1.4.0 → 1.5.0
+
+**注意**：自动上传会真的推代码到 GitHub，首次使用请确认工作区内容适合公开。

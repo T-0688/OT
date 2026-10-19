@@ -36,6 +36,9 @@ function agentExtraArgs(): string[] {
     if (dir && existsSync(dir)) args.push(`--add-dir=${dir}`);
   }
   if (cfg?.prewalk) args.push("--prewalk");
+  if (cfg?.smolModel) args.push(`--smol=${cfg.smolModel}`);
+  if (cfg?.slowModel) args.push(`--slow=${cfg.slowModel}`);
+  if (cfg?.planModel) args.push(`--plan=${cfg.planModel}`);
   return args;
 }
 
@@ -50,7 +53,11 @@ function emit(event: AgentEvent): void {
   win?.webContents.send("agent:event", event);
   remote?.ingest(event);
 
-  if (event.t === "turn_end") notifyTurnDone();
+  if (event.t === "user" && detectGithubIntent(event.text)) githubIntent = true;
+  if (event.t === "turn_end") {
+    notifyTurnDone();
+    if (githubIntent && settings?.get().githubAutoUpload) void autoUpload(sessionCwd);
+  }
   if (event.t === "ready") win?.flashFrame(false);
 
   if (store && currentSessionId && event.t !== "log" && event.t !== "agent_exit" && event.t !== "ready") {
@@ -277,6 +284,144 @@ function searchFiles(root: string, query: string): { path: string; name: string 
   return results.slice(0, 60);
 }
 
+let githubIntent = false;
+
+function detectGithubIntent(text: string): boolean {
+  return /(上传|推送|推到|提交|同步).{0,8}(github|git|仓库)/i.test(text) || /github.{0,8}(上传|推送|提交)/i.test(text);
+}
+
+function gitRun(cwd: string, args: string[], input?: string): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+    input,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+}
+
+function ghCredential(): { user: string; token: string } | null {
+  try {
+    const out = execFileSync("git", ["credential", "fill"], {
+      encoding: "utf8",
+      input: "protocol=https\nhost=github.com\n\n",
+      windowsHide: true,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+    const user = /username=(.+)/.exec(out)?.[1]?.trim() ?? "";
+    const token = /password=(.+)/.exec(out)?.[1]?.trim() ?? "";
+    return user && token ? { user, token } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function autoUpload(cwd: string): Promise<void> {
+  const cfg = settings!.get();
+  try {
+    let root = cwd;
+    try {
+      root = gitRun(cwd, ["rev-parse", "--show-toplevel"]).trim();
+    } catch {
+      gitRun(cwd, ["init"]);
+      root = cwd;
+    }
+    if (!gitRun(root, ["status", "--porcelain"]).trim()) return;
+    gitRun(root, ["add", "-A"]);
+    gitRun(root, ["-c", "user.name=T-Kepler", "-c", "user.email=2521674913@qq.com", "commit", "-m", `chore: auto upload ${new Date().toISOString().slice(0, 19)}`]);
+    let hasRemote = true;
+    try {
+      gitRun(root, ["remote", "get-url", "origin"]);
+    } catch {
+      hasRemote = false;
+    }
+    if (!hasRemote) {
+      const cred = ghCredential();
+      if (!cred) {
+        emit({ t: "note", text: "自动上传失败：本机没有 GitHub 凭据（git credential）" });
+        return;
+      }
+      const name = (root.split(/[\\/]/).filter(Boolean).pop() ?? "ot-project").toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+      const res = await fetch("https://api.github.com/user/repos", {
+        method: "POST",
+        headers: { Authorization: `token ${cred.token}`, Accept: "application/vnd.github+json", "User-Agent": "ot" },
+        body: JSON.stringify({ name, private: false, description: "Created by OT auto-upload" }),
+      });
+      if (!res.ok && res.status !== 422) {
+        emit({ t: "note", text: `自动上传失败：创建仓库 HTTP ${res.status}` });
+        return;
+      }
+      gitRun(root, ["remote", "add", "origin", `https://github.com/${cred.user}/${name}.git`]);
+      gitRun(root, ["branch", "-M", "main"]);
+      gitRun(root, ["push", "-u", "origin", "main"]);
+      emit({ t: "note", text: `已上传到 https://github.com/${cred.user}/${name}` });
+    } else {
+      gitRun(root, ["push"]);
+      emit({ t: "note", text: "已自动提交并推送改动" });
+    }
+  } catch (err: any) {
+    emit({ t: "note", text: `自动上传失败：${String(err?.message ?? err).slice(0, 200)}` });
+  }
+}
+function modelsFile(): string {
+  return join(app.getPath("home"), ".omp", "agent", "models.yml");
+}
+
+function yamlQuote(value: string): string {
+  return JSON.stringify(value ?? "");
+}
+
+function addCustomModel(input: {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  api: string;
+}): { ok: boolean; error?: string } {
+  try {
+    const file = modelsFile();
+    const slug = (input.name || input.modelId || "custom").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!slug || !input.baseUrl || !input.modelId) return { ok: false, error: "名称/地址/模型 ID 不能为空" };
+    let text = existsSync(file) ? readFileSync(file, "utf8") : "providers:\n";
+    if (!/^providers:\s*$/m.test(text)) text = "providers:\n" + text;
+    if (new RegExp(`^  ${slug}:\\s*$`, "m").test(text)) return { ok: false, error: `provider 名「${slug}」已存在` };
+    const block = [
+      `  ${slug}:`,
+      `    baseUrl: ${yamlQuote(input.baseUrl)}`,
+      `    api: ${input.api || "openai-completions"}`,
+      input.apiKey ? `    apiKey: ${yamlQuote(input.apiKey)}` : "",
+      "    models:",
+      `      - id: ${yamlQuote(input.modelId)}`,
+      `        name: ${yamlQuote(input.name || input.modelId)}`,
+      "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    text = text.replace(/^providers:\s*$/m, (line) => `${line}\n${block}`);
+    writeFileSync(`${file}.bak`, readFileSync(file, "utf8"));
+    writeFileSync(file, text, "utf8");
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+}
+
+async function fetchBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }> {
+  const key = settings?.get().deepseekApiKey?.trim();
+  if (!key) return { ok: false, error: "未配置 DeepSeek API Key" };
+  try {
+    const res = await fetch("https://api.deepseek.com/user/balance", {
+      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const data: any = await res.json();
+    const info = data?.balance_infos?.[0];
+    if (!info) return { ok: false, error: "没有余额信息" };
+    return { ok: true, currency: info.currency ?? "CNY", total: Number(info.total_balance ?? 0) };
+  } catch (err: any) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+}
 function listSkills(): Promise<SkillInfo[]> {
   return new Promise((resolve) => {
     execFile(
@@ -630,6 +775,11 @@ if (!app.requestSingleInstanceLock()) {
         void tunnel.start(port, { mode: cfg.tunnelMode, token: cfg.tunnelToken, hostname: cfg.tunnelHostname, name: cfg.tunnelName });
       });
     }, 3000);
+    ipcMain.handle("models:addCustom", (_e, input: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }) =>
+      addCustomModel(input),
+    );
+
+    ipcMain.handle("balance:get", () => fetchBalance());
     ipcMain.handle("remote:status", () => remoteStatus());
 
     ipcMain.handle("remote:start", async () => {
@@ -771,6 +921,8 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
 
 
 

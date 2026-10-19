@@ -64,6 +64,7 @@ export type AgentEvent =
       stopReason: string;
       usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedReadTokens?: number };
     }
+  | { t: "note"; text: string }
   | { t: "error"; message: string }
   | { t: "log"; text: string }
   | { t: "agent_exit"; code: number | null };
@@ -128,6 +129,12 @@ export type AppSettings = {
   balanceStart: number;
   extraDirs: string[];
   prewalk: boolean;
+  smolModel: string;
+  slowModel: string;
+  planModel: string;
+  deepseekApiKey: string;
+  githubAutoUpload: boolean;
+  customModels: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }[];
   tunnelToken: string;
   tunnelHostname: string;
   sessionView: "grouped" | "flat";
@@ -177,6 +184,8 @@ export type RendererApi = {
   remoteStart(): Promise<RemoteStatus>;
   remoteStop(): Promise<RemoteStatus>;
   remoteTunnel(on: boolean): Promise<RemoteStatus>;
+  addCustomModel(input: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }): Promise<{ ok: boolean; error?: string }>;
+  getBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
   restoreCheckpoint(sessionId: string, turnId: string): Promise<{ restored: number; removed: number; failed: number }>;
   revealInFolder(path: string): Promise<void>;
@@ -184,6 +193,8 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
+
 
 
 

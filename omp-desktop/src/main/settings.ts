@@ -31,6 +31,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   balanceStart: 0,
   extraDirs: [],
   prewalk: false,
+  smolModel: "",
+  slowModel: "",
+  planModel: "",
+  deepseekApiKey: "",
+  githubAutoUpload: false,
+  customModels: [],
   tunnelToken: "",
   tunnelHostname: "",
   sessionView: "grouped",
@@ -75,6 +81,7 @@ export class SettingsStore {
     return this.current;
   }
 }
+
 
 
 

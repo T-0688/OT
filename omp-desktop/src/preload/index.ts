@@ -31,6 +31,8 @@ const api: RendererApi = {
   mediaUrl: (path: string) => `ompmedia://local/?path=${encodeURIComponent(path)}`,
   searchFiles: (root: string, query: string) => ipcRenderer.invoke("fs:search", root, query),
   readFile: (path: string) => ipcRenderer.invoke("fs:read", path),
+  addCustomModel: (input: unknown) => ipcRenderer.invoke("models:addCustom", input),
+  getBalance: () => ipcRenderer.invoke("balance:get"),
   remoteStatus: () => ipcRenderer.invoke("remote:status"),
   remoteStart: () => ipcRenderer.invoke("remote:start"),
   remoteStop: () => ipcRenderer.invoke("remote:stop"),
@@ -59,6 +61,7 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
 
 
 
