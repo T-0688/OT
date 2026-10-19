@@ -224,6 +224,7 @@ export default function App() {
   const [liveSpeed, setLiveSpeed] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const liveChars = useRef(0);
+  const liveSamples = useRef<{ t: number; n: number }[]>([]);
   const liveStart = useRef(0);
   const [totalTokens, setTotalTokens] = useState(0);
   const [sessionCost, setSessionCost] = useState(0);
@@ -315,6 +316,8 @@ export default function App() {
           break;
         case "text":
           liveChars.current += estimateTokens(ev.text);
+          liveSamples.current.push({ t: Date.now(), n: estimateTokens(ev.text) });
+          if (liveSamples.current.length > 400) liveSamples.current.splice(0, 200);
           queue("text", ev.text);
           if (stickToBottom.current) {
             requestAnimationFrame(() => {
@@ -413,8 +416,17 @@ export default function App() {
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => {
-      const elapsed = (Date.now() - liveStart.current) / 1000;
-      if (elapsed > 0.8) setLiveSpeed(liveChars.current / elapsed);
+      const now = Date.now();
+      const elapsed = (now - liveStart.current) / 1000;
+      const recent = liveSamples.current.filter((x) => now - x.t <= 3000);
+      liveSamples.current = recent;
+      if (recent.length >= 2) {
+        const sum = recent.reduce((a, b) => a + b.n, 0);
+        const span = Math.max(0.5, (now - recent[0].t) / 1000);
+        setLiveSpeed(sum / span);
+      } else if (!recent.length) {
+        setLiveSpeed(0);
+      }
       setElapsedSec(Math.max(0, Math.round(elapsed)));
     }, 500);
     return () => clearInterval(timer);
@@ -506,6 +518,7 @@ export default function App() {
     lastUser.current = content;
     turnStart.current = Date.now();
     liveChars.current = 0;
+    liveSamples.current = [];
     liveStart.current = Date.now();
     setLiveSpeed(0);
     setElapsedSec(0);
@@ -1285,7 +1298,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.16.0</span>
+            <span className="version">v1.17.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2435,6 +2448,11 @@ function SettingsPanel({
   const [cmId, setCmId] = useState("");
   const [cmKey, setCmKey] = useState("");
   const [cmMsg, setCmMsg] = useState("");
+  const [lanList, setLanList] = useState<string[]>([]);
+  useEffect(() => {
+    if (setTab !== "mobile") return;
+    void window.api.lanUrls().then(setLanList).catch(() => setLanList([]));
+  }, [setTab]);
   const [setTab, setSetTab] = useState<"general" | "models" | "balance" | "mobile" | "github" | "data">("general");
 
   useEffect(() => {
@@ -2791,6 +2809,23 @@ function SettingsPanel({
       <section className="set-group" data-cat="mobile">
         <h3>手机访问</h3>
         <div className="set-row">
+          <label>局域网地址</label>
+          <div className="set-inline">
+            {lanList.length === 0 ? <span className="set-hint">没有检测到局域网 IPv4 地址</span> : null}
+            {lanList.map((u) => (
+              <button
+                key={u}
+                className="ghost"
+                title="点击复制；手机与电脑同一 Wi-Fi 时用它更快"
+                onClick={() => void navigator.clipboard.writeText(u)}
+              >
+                {u.replace(/\?.*/, "")}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="set-hint">同一 Wi-Fi 下把手机连接地址换成局域网地址，比走 Cloudflare 隧道快很多（长按手机顶部标题可修改）。</div>
+        <div className="set-row">
           <label>开启远程服务</label>
           <label className="switch">
             <input
@@ -3069,6 +3104,10 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 

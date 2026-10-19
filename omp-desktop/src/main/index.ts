@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, Notification, protocol, shell } from "electron";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -870,6 +871,20 @@ app.on("second-instance", () => {
 
     ipcMain.handle("balance:get", () => fetchBalance());
 
+    ipcMain.handle("net:lan", () => {
+      const port = settings?.get().remotePort ?? 7788;
+      const token = settings?.get().remoteToken ?? "";
+      const urls: string[] = [];
+      for (const list of Object.values(networkInterfaces())) {
+        for (const info of list ?? []) {
+          if (info.family === "IPv4" && !info.internal) {
+            urls.push(`http://${info.address}:${port}/?token=${token}`);
+          }
+        }
+      }
+      return urls;
+    });
+
     ipcMain.handle("models:deepseek", async () => {
       const key = settings?.get().deepseekApiKey?.trim();
       if (!key) return { ok: false, ids: [] as string[], error: "未配置 Key" };
@@ -1043,6 +1058,8 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
 
 
 

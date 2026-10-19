@@ -1,0 +1,11 @@
+const PORT = "9340";
+const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page = list.find(t => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result ?? m.error); pending.delete(m.id); } };
+await new Promise(r => ws.onopen = r);
+const send = (m, p = {}) => new Promise(res => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const r = await send("Runtime.evaluate", { expression: `window.api.lanUrls().then(v=>'OK '+JSON.stringify(v)).catch(e=>'ERR '+e.message)`, returnByValue: true, awaitPromise: true });
+console.log(JSON.stringify(r));
+process.exit(0);

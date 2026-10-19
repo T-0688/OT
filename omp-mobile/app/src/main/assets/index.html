@@ -172,15 +172,22 @@ function setStatus(s) {
   sub.textContent = s;
   dot.className = 'dot' + (s === '运行中' ? ' run' : '');
 }
+let retry = 800;
+function cacheKey(suffix) { return 'omp.' + suffix + '.' + host; }
 function connect() {
   const proto = host.indexOf('127.0.0.1') >= 0 || host.indexOf('localhost') >= 0 ? 'ws://' : 'wss://';
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
-  ws.onopen = () => setStatus('已连接');
-  ws.onclose = () => { setStatus('已断开'); setTimeout(connect, 2000); };
+  ws.onopen = () => { retry = 800; setStatus('已连接'); };
+  ws.onclose = () => {
+    setStatus('已断开');
+    retry = Math.min(5000, Math.max(800, retry * 1.6));
+    setTimeout(connect, retry);
+  };
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.t === 'hello') {
       title.textContent = m.title || 'OT';
+      try { localStorage.setItem(cacheKey('history'), JSON.stringify({ title: m.title, history: m.history || [], id: m.id })); } catch {}
       setStatus(m.status === 'running' ? '运行中' : '空闲');
       currentId = m.id || '';
       log.innerHTML = '';
@@ -190,6 +197,7 @@ function connect() {
         else { cur = add(l.role, l.text); }
       });
     } else if (m.t === 'sessions') {
+      try { localStorage.setItem(cacheKey('sessions'), JSON.stringify(m.list || [])); } catch {}
       renderSessions(m.list || [], m.current || currentId);
     } else if (m.t === 'user') {
       cur = add('user', m.text);
@@ -369,8 +377,50 @@ setInterval(() => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && (!ws || ws.readyState > 1)) connect();
 });
+
+// 长按标题可改连接地址（同一 Wi-Fi 下用局域网地址明显更快）
+let pressTimer = null;
+title.addEventListener('pointerdown', () => {
+  pressTimer = setTimeout(() => {
+    const next = prompt('连接地址（http://IP:7788/?token=...）', host ? 'http://' + host + '/?token=' + token : '');
+    if (!next) return;
+    try {
+      const u = new URL(next);
+      localStorage.setItem('omp.url', next);
+      location.href = u.href;
+    } catch { alert('地址格式不对'); }
+  }, 650);
+});
+title.addEventListener('pointerup', () => clearTimeout(pressTimer));
+title.addEventListener('pointercancel', () => clearTimeout(pressTimer));
+
+// 保存过的自定义地址优先
+try {
+  const saved = localStorage.getItem('omp.url');
+  if (saved) {
+    const u = new URL(saved);
+    if (u.host !== host) {
+      location.href = u.href;
+    }
+  }
+} catch {}
+
+// 先用缓存把上次对话画出来，WS 连上后再校准
+try {
+  const cached = JSON.parse(localStorage.getItem(cacheKey('history')) || 'null');
+  if (cached && cached.history) {
+    title.textContent = cached.title || 'OT';
+    currentId = cached.id || '';
+    log.innerHTML = '';
+    curRaw = '';
+    cached.history.forEach((l) => {
+      if (l.role === 'agent') { cur = add('agent', ''); curRaw = l.text; cur.innerHTML = md(l.text); }
+      else { cur = add(l.role, l.text); }
+    });
+    setStatus('连接中…');
+  }
+} catch {}
+
 connect();
 </script>
 </body></html>
-
-

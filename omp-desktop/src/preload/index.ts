@@ -34,6 +34,7 @@ const api: RendererApi = {
   addCustomModel: (input: unknown) => ipcRenderer.invoke("models:addCustom", input),
   getBalance: () => ipcRenderer.invoke("balance:get"),
   deepseekModels: () => ipcRenderer.invoke("models:deepseek"),
+  lanUrls: () => ipcRenderer.invoke("net:lan"),
   uploadNow: () => ipcRenderer.invoke("github:uploadNow"),
   fixGitignore: () => ipcRenderer.invoke("github:fixGitignore"),
   remoteStatus: () => ipcRenderer.invoke("remote:status"),
@@ -64,6 +65,7 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
 
 
 
