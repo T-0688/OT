@@ -288,11 +288,26 @@ public class MainActivity extends Activity {
     public class NotifyBridge {
         @JavascriptInterface
         public void setTarget(String host, String token, String proto) {
+            String p = proto == null ? "wss" : proto.replace(":", "").replace("/", "");
+            if (!p.equals("ws") && !p.equals("wss")) p = "wss";
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString("ws_host", host)
-                    .putString("ws_token", token)
-                    .putString("ws_proto", proto)
+                    .putString("ws_host", host == null ? "" : host)
+                    .putString("ws_token", token == null ? "" : token)
+                    .putString("ws_proto", p)
                     .apply();
+        }
+
+        @JavascriptInterface
+        public boolean serviceRunning() {
+            return NotifyService.RUNNING;
+        }
+
+        @JavascriptInterface
+        public boolean canNotify() {
+            if (Build.VERSION.SDK_INT >= 33) {
+                return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+            }
+            return true;
         }
 
         @JavascriptInterface
@@ -360,5 +375,8 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.__otResume && window.__otResume()", null);
         }
     }}
+
+
+
 
 

@@ -212,9 +212,11 @@ function showLocalNotification(title, body) {
 }
 
 function connect() {
-  const proto = host.indexOf('127.0.0.1') >= 0 || host.indexOf('localhost') >= 0 ? 'ws://' : 'wss://';
-  try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, proto.replace(':', '')); } catch (e) {}
+  const isLocal = /^(127\.|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host) || /:\d+$/.test(host);
+  const proto = isLocal ? 'ws://' : 'wss://';
+  try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, isLocal ? 'ws' : 'wss'); } catch (e) {}
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
+  try { if (window.OTNotify && window.OTNotify.canNotify && !window.OTNotify.canNotify()) { setTimeout(() => toast('请允许 OT 的通知权限，否则后台收不到提醒'), 1200); } } catch (e) {}
   ws.onopen = () => { retry = 800; setStatus('已连接'); };
   ws.onclose = () => {
     setStatus('已断开');
@@ -254,7 +256,9 @@ function connect() {
     } else if (m.t === 'notify') {
       const ntitle = m.title || 'OT';
       const nbody = m.body || '当前任务完成';
-      if (document.hidden) showLocalNotification(ntitle, nbody);
+      let svc = false;
+      try { svc = !!(window.OTNotify && window.OTNotify.serviceRunning && window.OTNotify.serviceRunning()); } catch (e) {}
+      if (document.hidden && !svc) showLocalNotification(ntitle, nbody);
       else toast(nbody);
     } else if (m.t === 'turn_end') {
       setStatus('空闲');
@@ -485,6 +489,9 @@ try {
 connect();
 </script>
 </body></html>
+
+
+
 
 
 

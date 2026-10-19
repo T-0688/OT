@@ -24,6 +24,7 @@ public class NotifyService extends Service {
     private static final String CHANNEL_FG = "ot_keepalive";
     private static final int FG_ID = 1001;
 
+    public static volatile boolean RUNNING = false;
     private volatile boolean running;
     private volatile OtWsClient client;
     private volatile long lastSeen = System.currentTimeMillis();
@@ -76,6 +77,7 @@ public class NotifyService extends Service {
         }
         if (!running) {
             running = true;
+            RUNNING = true;
             watchNetwork();
             new Thread(this::connectLoop, "ot-ws-loop").start();
             new Thread(this::heartbeatLoop, "ot-ws-heartbeat").start();
@@ -94,6 +96,7 @@ public class NotifyService extends Service {
 
     private void connectLoop() {
         long backoff = 800;
+        int failures = 0;
         while (running) {
             String url = wsUrl();
             if (url == null) {
@@ -106,10 +109,15 @@ public class NotifyService extends Service {
                 lastSeen = System.currentTimeMillis();
                 listener.onOpen();
                 backoff = 800;
+                failures = 0;
                 while (running && !c.isClosed()) {
                     sleep(1000);
                 }
             } catch (Exception ignored) {
+                failures++;
+                if (failures == 3) {
+                    notifyTask("OT", "后台连接失败，请打开一次 OT 检查网络");
+                }
             } finally {
                 OtWsClient c = client;
                 client = null;
@@ -227,6 +235,7 @@ public class NotifyService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        RUNNING = false;
         OtWsClient c = client;
         client = null;
         if (c != null) {
@@ -244,3 +253,5 @@ public class NotifyService extends Service {
         super.onDestroy();
     }
 }
+
+
