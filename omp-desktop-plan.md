@@ -1074,3 +1074,13 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 **自启**：计划任务被拒（拒绝访问），改用启动文件夹 `OT-WeChat-Bridge.vbs` + `run-loop.cmd`（node 崩溃后 5 秒重启），无需管理员权限。
 
 **验证**：扫码绑定 `bot_id=4977964b3380@im.bot`；微信发「只回复 ok」→ 21 秒后收到回复；日志显示绑定用户与回复记录。
+
+### 71. 微信桥接独立成目录（2026-10-19）
+
+按使用习惯，把 ClawBot 桥接从仓库里移出，放到 `D:\.Daily\ot-wechat`（与 `wecom-bridge` 同级），仓库不再保留副本：
+
+- 运行目录：`D:\.Daily\ot-wechat`（bridge.mjs / node_modules / run-loop.cmd / 安装脚本）
+- 数据目录不变：`%APPDATA%\ot-wechat`（account.json、seen.json、qr.png、bridge.log）
+- 自启：启动文件夹 `OT-WeChat-Bridge.vbs` → 指向新目录的 `run-loop.cmd`（隐藏窗口 + 崩溃重启）
+- 仓库里 `wechat-bridge/` 已移除，协议细节留在本节
+- 注意：`D:\.Daily\DeepSeek Harness\wecom-bridge` 是既有的「企业微信 ↔ DSH」桥接，本次未改动
