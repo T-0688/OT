@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="OMP"
+        android:label="OT"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
@@ -24,4 +24,5 @@
         </activity>
     </application>
 </manifest>
+
 

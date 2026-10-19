@@ -39,7 +39,7 @@
   },
   "build": {
     "appId": "com.local.ompdesktop",
-    "productName": "OMP Desktop",
+    "productName": "OT",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -70,12 +70,13 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "OMP Desktop",
-      "artifactName": "OMP-Desktop-Setup-${version}.${ext}",
+      "artifactName": "OT-Setup-${version}.${ext}",
       "deleteAppDataOnUninstall": false
     },
     "electronDist": "node_modules/electron/dist"
   }
 }
+
 
 
 

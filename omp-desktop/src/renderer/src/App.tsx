@@ -972,7 +972,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="brand">
           <span className="logo" />
-          <span className="brand-name">OMP Desktop</span>
+          <span className="brand-name">OT</span>
           <span className={`dot ${status}`} />
         </div>
           <button className="new-chat" onClick={() => void newSession()} title="开新会话 (Ctrl+N)">
@@ -2439,7 +2439,7 @@ function SettingsPanel({
         <div className="set-row">
           <label>版本</label>
           <span className="set-hint">
-            OMP Desktop {version || "—"} · {agents.filter((a) => a.detected).map((a) => `${a.name} ${a.version ?? ""}`).join(" / ")}
+            OT {version || "—"} · {agents.filter((a) => a.detected).map((a) => `${a.name} ${a.version ?? ""}`).join(" / ")}
           </span>
         </div>
       </section>
@@ -2447,6 +2447,7 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
 
 
 

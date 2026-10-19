@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>OMP Desktop</title>
+<title>OT</title>
 <meta name="theme-color" content="#151517" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -51,7 +51,7 @@
   .agent hr { border: none; border-top: 1px solid rgba(255,255,255,.1); margin: 12px 0; }
 </style></head>
 <body>
-<header><span class="dot" id="dot"></span><b id="title">OMP Desktop</b><button id="listBtn" class="ghost">会话</button><span class="sub" id="sub">连接中…</span></header>
+<header><span class="dot" id="dot"></span><b id="title">OT</b><button id="listBtn" class="ghost">会话</button><span class="sub" id="sub">连接中…</span></header>
 <div id="log"></div>
 <footer>
   <textarea id="input" rows="1" placeholder="回复 agent…"></textarea>
@@ -146,7 +146,7 @@ function connect() {
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.t === 'hello') {
-      title.textContent = m.title || 'OMP Desktop';
+      title.textContent = m.title || 'OT';
       setStatus(m.status === 'running' ? '运行中' : '空闲');
       currentId = m.id || '';
       log.innerHTML = '';
@@ -218,7 +218,7 @@ function renderSessions(list, current) {
     b.appendChild(t); b.appendChild(d);
     b.onclick = () => {
       sheet.classList.add('hidden');
-      title.textContent = s.title || 'OMP Desktop';
+      title.textContent = s.title || 'OT';
       ws.send(JSON.stringify({ type: 'open', id: s.id }));
       setStatus('切换中…');
     };
@@ -244,4 +244,5 @@ input.addEventListener('keydown', (e) => {
 connect();
 </script>
 </body></html>
+
 

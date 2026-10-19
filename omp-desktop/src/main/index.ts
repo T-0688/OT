@@ -65,7 +65,7 @@ function notifyTurnDone(): void {
   win.flashFrame(true);
   if (!Notification.isSupported()) return;
   const note = new Notification({
-    title: "OMP Desktop",
+    title: "OT",
     body: "这一轮跑完了",
     silent: false,
   });
@@ -85,7 +85,7 @@ function createWindow(): void {
     minHeight: 600,
     backgroundColor: "#0b0d10",
     autoHideMenuBar: true,
-    title: "OMP Desktop",
+    title: "OT",
     icon: join(import.meta.dirname, "../../build/icon.png"),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.mjs"),
@@ -354,6 +354,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     app.setAppUserModelId("com.local.ompdesktop");
+    app.setPath("userData", join(app.getPath("appData"), "omp-desktop"));
     Menu.setApplicationMenu(null);
 
     settings = new SettingsStore(join(app.getPath("userData"), "settings.json"));
@@ -756,6 +757,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 

@@ -1,6 +1,6 @@
-# OMP Desktop
+# OT
 
-把 [oh-my-pi](https://github.com/can1357/oh-my-pi)（`omp`）包装成桌面客户端的 Electron 应用，顺带一个手机端。
+OT 是一个把 [oh-my-pi](https://github.com/can1357/oh-my-pi)（`omp`）包装成桌面客户端的 Electron 应用，顺带一个手机端。
 
 ## 组成
 
@@ -46,3 +46,4 @@ gradle assembleDebug    # 需要 Android SDK + JDK 17+
 ## 许可
 
 MIT
+
