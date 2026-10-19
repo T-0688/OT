@@ -48,6 +48,7 @@ function emit(event: AgentEvent): void {
     sessionCwd = event.cwd;
     currentAgentId = event.agentId;
     lastConfig = event.configOptions ?? [];
+    settings?.save({ lastSessionId: event.sessionId });
   }
 
   win?.webContents.send("agent:event", event);
@@ -56,6 +57,11 @@ function emit(event: AgentEvent): void {
   if (event.t === "user" && detectGithubIntent(event.text)) githubIntent = true;
   if (event.t === "turn_end") {
     notifyTurnDone();
+    if (currentSessionId) {
+      const u = event.usage;
+      const tok = (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
+      store?.addTurnStats(currentSessionId, tok, 0);
+    }
     if (githubIntent && settings?.get().githubAutoUpload) void autoUpload(sessionCwd);
   }
   if (event.t === "ready") win?.flashFrame(false);
@@ -1035,6 +1041,8 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
 
 
 

@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   githubAutoUpload: false,
   githubBlockSecrets: true,
   officialModelsOnly: true,
+  lastSessionId: "",
   customModels: [],
   tunnelToken: "",
   tunnelHostname: "",
@@ -86,6 +87,7 @@ export class SettingsStore {
     return this.current;
   }
 }
+
 
 
 

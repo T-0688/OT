@@ -77,6 +77,7 @@ export type SessionMeta = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  stats?: { tokens: number; cost: number; turns: number };
 };
 
 export type AgentInfo = {
@@ -139,6 +140,7 @@ export type AppSettings = {
   githubAutoUpload: boolean;
   githubBlockSecrets: boolean;
   officialModelsOnly: boolean;
+  lastSessionId: string;
   customModels: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }[];
   tunnelToken: string;
   tunnelHostname: string;
@@ -201,6 +203,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

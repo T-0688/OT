@@ -114,6 +114,13 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "失败",
 };
 
+function formatElapsed(sec: number): string {
+  if (sec < 60) return `${sec} 秒`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m} 分 ${s} 秒` : `${m} 分`;
+}
+
 function estimateTokens(text: string): number {
   let cjk = 0;
   let other = 0;
@@ -215,9 +222,13 @@ export default function App() {
   const [balance, setBalance] = useState<{ total?: number; currency?: string }>({});
   const [officialModels, setOfficialModels] = useState<string[] | null>(null);
   const [liveSpeed, setLiveSpeed] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const liveChars = useRef(0);
   const liveStart = useRef(0);
   const [totalTokens, setTotalTokens] = useState(0);
+  const [sessionCost, setSessionCost] = useState(0);
+  const [sessionTurnBase, setSessionTurnBase] = useState(0);
+  const [autoOpen, setAutoOpen] = useState<SessionMeta | null>(null);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number; cwd: string; name: string; pinned: boolean } | null>(null);
   const [wsEditing, setWsEditing] = useState<{ cwd: string; value: string } | null>(null);
@@ -305,6 +316,12 @@ export default function App() {
         case "text":
           liveChars.current += estimateTokens(ev.text);
           queue("text", ev.text);
+          if (stickToBottom.current) {
+            requestAnimationFrame(() => {
+              const el = scrollRef.current;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          }
           break;
         case "thinking":
           queue("thinking", ev.text);
@@ -398,6 +415,7 @@ export default function App() {
     const timer = setInterval(() => {
       const elapsed = (Date.now() - liveStart.current) / 1000;
       if (elapsed > 0.8) setLiveSpeed(liveChars.current / elapsed);
+      setElapsedSec(Math.max(0, Math.round(elapsed)));
     }, 500);
     return () => clearInterval(timer);
   }, [running]);
@@ -443,10 +461,23 @@ export default function App() {
     })();
     if (!started.current) {
       started.current = true;
-      void window.api.start().catch((err) => {
-        setStatus("error");
-        setItems([{ kind: "note", id: uid("n"), text: `无法启动 agent：${err?.message ?? err}` }]);
-      });
+      void (async () => {
+        try {
+          const st = await window.api.settings();
+          const list = await window.api.sessions();
+          const last = st.lastSessionId ? list.find((x) => x.id === st.lastSessionId) : null;
+          if (last) {
+            setAutoOpen(last);
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+        void window.api.start().catch((err) => {
+          setStatus("error");
+          setItems([{ kind: "note", id: uid("n"), text: `无法启动 agent：${err?.message ?? err}` }]);
+        });
+      })();
     }
     return off;
   }, [handleEvent, refreshSessions]);
@@ -477,6 +508,7 @@ export default function App() {
     liveChars.current = 0;
     liveStart.current = Date.now();
     setLiveSpeed(0);
+    setElapsedSec(0);
     setRunning(true);
     setStatus("running");
     stickToBottom.current = true;
@@ -582,6 +614,9 @@ export default function App() {
 
   const newSession = async (nextAgent = agentId, nextCwd?: string) => {
     setItems([]);
+    setTotalTokens(0);
+    setSessionCost(0);
+    setSessionTurnBase(0);
     setStats({});
     setUsage({});
     setSessionId(null);
@@ -601,14 +636,24 @@ export default function App() {
     let replay: Item[] = [];
     let configs: ConfigOption[] = [];
     let agent = meta.agentId;
+    let rTokens = 0;
+    let rTurns = 0;
     for (const ev of data.events) {
       replay = applyToItems(replay, ev);
       if (ev.t === "ready") {
         configs = ev.configOptions ?? [];
         agent = ev.agentId;
       }
+      if (ev.t === "turn_end") {
+        rTurns += 1;
+        const u = ev.usage;
+        rTokens += (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
+      }
     }
     setItems(replay);
+    setTotalTokens(Math.max(meta.stats?.tokens ?? 0, rTokens));
+    setSessionCost(meta.stats?.cost ?? 0);
+    setSessionTurnBase(Math.max(meta.stats?.turns ?? 0, rTurns));
     setStats({});
     setUsage({});
     setConfigOptions(configs);
@@ -620,8 +665,16 @@ export default function App() {
     setRunning(false);
     setFailedText(null);
     stickToBottom.current = true;
+    void window.api.saveSettings({ lastSessionId: meta.id });
     await window.api.resume(meta.id);
   };
+
+  useEffect(() => {
+    if (!autoOpen) return;
+    const target = autoOpen;
+    setAutoOpen(null);
+    void openSession(target);
+  }, [autoOpen]);
 
   const changeDir = async () => {
     const dir = await window.api.pickDirectory();
@@ -738,7 +791,7 @@ export default function App() {
       return officialModels.includes(id) || o.value === current;
     });
   }, [models?.options, models?.currentValue, officialModels]);
-  const turnCount = useMemo(() => items.filter((i) => i.kind === "turn").length + (running ? 1 : 0), [items, running]);
+  const turnCount = useMemo(() => Math.max(items.filter((i) => i.kind === "turn").length, sessionTurnBase) + (running ? 1 : 0), [items, running, sessionTurnBase]);
   const ctxPct = usage.size ? Math.min(100, ((usage.used ?? 0) / usage.size) * 100) : 0;
   const isOffPeak = useMemo(() => {
     const now = new Date();
@@ -749,6 +802,7 @@ export default function App() {
 
   const cost = useMemo(() => {
     if (typeof usage.cost === "number" && usage.cost > 0) return usage.cost;
+    if (sessionCost > 0) return sessionCost;
     const pIn = appSettings?.priceIn ?? 0;
     const pOut = appSettings?.priceOut ?? 0;
     const pCache = appSettings?.priceCacheIn || pIn * 0.1;
@@ -894,6 +948,8 @@ export default function App() {
     }
     setItems([]);
     setTotalTokens(0);
+    setSessionCost(0);
+    setSessionTurnBase(0);
     setDraft(userText);
     setFailedText(null);
     setRunning(false);
@@ -1229,7 +1285,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.14.0</span>
+            <span className="version">v1.15.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1379,7 +1435,11 @@ export default function App() {
             />
           ) : null}
         </div>
-        <div
+        <div className={`think-badge ${running ? "on" : ""}`}>
+          <span className="think-orb" />
+          <span className="think-text">OT Thinking…</span>
+          {running ? <span className="think-time">{formatElapsed(elapsedSec)}</span> : null}
+        </div>        <div
           className="composer"
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -3009,6 +3069,14 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
+
+
+
+
 
 
 

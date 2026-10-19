@@ -880,3 +880,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.13.0 → 1.14.0
 
 **验证**：运行中状态栏出现 `~202 tok/s`；停止键背景 rgb(37,99,235)；工具卡 `details.tool` 默认 closed。
+
+### 56. 1.15.0：Thinking 徽标+计时、状态栏回填、自动滚底、启动续上次会话（2026-10-19）
+
+- 输入框上方左侧新增「OT Thinking…」徽标：紫蓝方块呼吸 + 文字流光，运行中显示已用时长（<60s 显示 `N 秒`，否则 `M 分 S 秒`）
+- 打开历史会话时回填状态栏：优先用 `meta.stats`（JSONL 里 turn_end 的 usage 累加），旧会话则重放事件现算 tokens 与轮次
+- 流式输出时若视口在最底部，自动跟随滚动到底
+- 启动时读取 `settings.lastSessionId`，有上次会话就直接 resume，没有才新建；每次 ready 和打开会话都写 lastSessionId
+- SessionMeta 增加 `stats`，store 增加 `addTurnStats`，turn_end 时累加 tokens/轮次
+- 版本 1.14.0 → 1.15.0
+
+**验证**：重启后自动打开上次会话（第 1 轮 / 12.6k tok 回填）；运行中徽标显示「OT Thinking… 4 秒」。
