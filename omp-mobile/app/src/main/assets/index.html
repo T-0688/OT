@@ -11,34 +11,14 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; overflow-x: hidden; background: #151517; color: #f9fafb; font: 15px/1.65 -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; }
   header { position: sticky; top: 0; z-index: 2; padding: 12px 16px; background: rgba(21,21,23,.92); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 8px; }
-  header b { font-size: 14px; font-weight: 600; }
+  header b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: #979da6; font-size: 12px; margin-left: auto; white-space: nowrap; }
-  #log { padding: 14px 16px 140px; display: flex; flex-direction: column; gap: 10px; }
+  #log { padding: 14px 16px 190px; display: flex; flex-direction: column; gap: 10px; }
   .line { white-space: pre-wrap; word-break: break-word; }
   .user { align-self: flex-end; background: #2a2a33; padding: 8px 12px; border-radius: 14px 14px 4px 14px; max-width: 82%; }
   .agent { align-self: flex-start; max-width: 100%; }
   .tool { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #979da6; border-left: 2px solid #33343a; padding-left: 8px; }
   .note { color: #f7ad31; font-size: 12px; }
-  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: rgba(21,21,23,.96); backdrop-filter: blur(14px); border-top: 1px solid rgba(255,255,255,.08); display: flex; gap: 8px; }
-  textarea { flex: 1 1 auto; min-width: 0; width: 100%; resize: none; min-height: 42px; max-height: 120px; background: #232324; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: inherit; padding: 10px 12px; font: inherit; }
-  button { border: none; border-radius: 12px; flex: 0 0 auto; height: 44px; padding: 0 16px; font: inherit; font-weight: 600; background: #f9fafb; color: #0f1115; }
-  button:disabled { opacity: .4; }
-  .perm { background: #232324; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-  .perm .acts { display: flex; gap: 8px; }
-  .perm .acts button { flex: 1; height: 36px; }
-  .perm .acts .no { background: transparent; color: #f25a5a; border: 1px solid rgba(242,90,90,.4); }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: #41c977; }
-  .dot.run { background: #f7ad31; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { opacity: .35 } }
-  .ghost { background: transparent; color: #cfd3d6; border: 1px solid rgba(255,255,255,.16); height: 30px; padding: 0 12px; font-weight: 500; font-size: 13px; }
-  .sheet { position: fixed; inset: 0; z-index: 10; background: rgba(10,10,12,.96); backdrop-filter: blur(10px); display: flex; flex-direction: column; }
-  .sheet.hidden { display: none; }
-  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
-  #sessions { overflow: auto; padding: 10px 8px 40px; }
-  .sess { display: flex; flex-direction: column; gap: 3px; width: 100%; height: auto; min-height: 52px; text-align: left; background: transparent; color: inherit; border: none; border-radius: 10px; padding: 9px 12px; }
-  .sess:active, .sess.on { background: #232324; }
-  .sess b { font-weight: 500; font-size: 14px; line-height: 1.35; color: #f9fafb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sess span { font-size: 11px; color: #979da6; font-family: ui-monospace, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent p { margin: 0 0 8px; }
   .agent h1, .agent h2, .agent h3, .agent h4 { margin: 12px 0 6px; font-size: 16px; line-height: 1.4; }
   .agent ul, .agent ol { margin: 6px 0 8px; padding-left: 22px; }
@@ -49,15 +29,48 @@
   .agent blockquote { border-left: 2px solid #33343a; margin: 6px 0; padding-left: 10px; color: #cfd3d6; }
   .agent a { color: #7aaaff; }
   .agent hr { border: none; border-top: 1px solid rgba(255,255,255,.1); margin: 12px 0; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: rgba(21,21,23,.96); backdrop-filter: blur(14px); border-top: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 8px; }
+  .composer-row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea { flex: 1 1 auto; min-width: 0; width: 100%; resize: none; min-height: 42px; max-height: 120px; background: #232324; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: inherit; padding: 10px 12px; font: inherit; }
+  button { border: none; border-radius: 12px; flex: 0 0 auto; height: 44px; padding: 0 16px; font: inherit; font-weight: 600; background: #f9fafb; color: #0f1115; }
+  button:disabled { opacity: .4; }
+  .plus { width: 44px; padding: 0; background: #232324; color: #cfd3d6; border: 1px solid rgba(255,255,255,.12); font-size: 20px; font-weight: 400; }
+  .attach { display: flex; flex-wrap: wrap; gap: 6px; }
+  .attach:empty { display: none; }
+  .chip { display: flex; align-items: center; gap: 6px; background: #232324; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 4px 8px; font-size: 12px; color: #cfd3d6; max-width: 100%; }
+  .chip img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+  .chip button { height: 20px; width: 20px; padding: 0; border-radius: 50%; background: transparent; color: #979da6; font-size: 14px; font-weight: 400; }
+  .perm { background: #232324; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .perm .acts { display: flex; gap: 8px; }
+  .perm .acts button { flex: 1; height: 36px; }
+  .perm .acts .no { background: transparent; color: #f25a5a; border: 1px solid rgba(242,90,90,.4); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #41c977; flex: 0 0 auto; }
+  .dot.run { background: #f7ad31; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35 } }
+  .ghost { background: transparent; color: #cfd3d6; border: 1px solid rgba(255,255,255,.16); height: 30px; padding: 0 12px; font-weight: 500; font-size: 13px; }
+  .sheet { position: fixed; inset: 0; z-index: 10; background: rgba(10,10,12,.96); backdrop-filter: blur(10px); display: flex; flex-direction: column; transition: transform .22s ease, opacity .22s ease; }
+  .sheet.hidden { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  #sessions { overflow: auto; padding: 10px 8px 40px; }
+  .sess { display: flex; flex-direction: column; gap: 3px; width: 100%; height: auto; min-height: 52px; text-align: left; background: transparent; color: inherit; border: none; border-radius: 10px; padding: 9px 12px; }
+  .sess:active, .sess.on { background: #232324; }
+  .sess b { font-weight: 500; font-size: 14px; line-height: 1.35; color: #f9fafb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess span { font-size: 11px; color: #979da6; font-family: ui-monospace, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style></head>
 <body>
-<header><span class="dot" id="dot"></span><b id="title">OT</b><button id="listBtn" class="ghost">会话</button><span class="sub" id="sub">连接中…</span></header>
+<header><span class="dot" id="dot"></span><b id="title">OT</b><span class="sub" id="sub">连接中…</span></header>
 <div id="log"></div>
 <footer>
-  <textarea id="input" rows="1" placeholder="回复 agent…"></textarea>
-  <button id="send">发送</button>
+  <div class="attach" id="attach"></div>
+  <div class="composer-row">
+    <button id="plus" class="plus" title="上传图片或文件">＋</button>
+    <textarea id="input" rows="1" placeholder="回复 agent…"></textarea>
+    <button id="send">发送</button>
+  </div>
 </footer>
 <div id="sheet" class="sheet hidden"><div class="sheet-head"><b>会话</b><button id="closeSheet" class="ghost">关闭</button></div><div id="sessions"></div></div>
+<input type="file" id="picker" multiple style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.log,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
 <script>
 const params = new URLSearchParams(location.search);
 const token = params.get('token') || '';
@@ -68,11 +81,13 @@ const sub = document.getElementById('sub');
 const title = document.getElementById('title');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
+const plusBtn = document.getElementById('plus');
+const picker = document.getElementById('picker');
+const attachBox = document.getElementById('attach');
 const sheet = document.getElementById('sheet');
 const sessionsBox = document.getElementById('sessions');
-let ws, cur = null, currentId = '';
-
-let curRaw = '';
+let ws, cur = null, currentId = '', curRaw = '';
+let attachments = [];
 
 function escHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -126,6 +141,7 @@ function md(src) {
   closeList();
   return out;
 }
+
 function add(role, text) {
   const el = document.createElement('div');
   el.className = 'line ' + role;
@@ -177,6 +193,9 @@ function connect() {
       log.innerHTML = '';
       cur = null;
       curRaw = '';
+    } else if (m.t === 'file_saved') {
+      const item = attachments.find((a) => a.id === m.id);
+      if (item) { item.path = m.path; renderAttach(); }
     } else if (m.t === 'permission') {
       const box = document.createElement('div');
       box.className = 'perm';
@@ -225,18 +244,89 @@ function renderSessions(list, current) {
     sessionsBox.appendChild(b);
   });
 }
-document.getElementById('listBtn').onclick = () => {
+function openSheet() {
   sheet.classList.remove('hidden');
   sessionsBox.innerHTML = '<div class="tool">加载中…</div>';
   ws.send(JSON.stringify({ type: 'sessions' }));
-};
+}
 document.getElementById('closeSheet').onclick = () => sheet.classList.add('hidden');
 
+/* 右滑打开会话列表，左滑关闭 */
+let startX = null, startY = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  startX = t.clientX; startY = t.clientY;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (startX === null) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - startX;
+  const dy = t.clientY - startY;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+    if (dx > 0 && startX < 70 && sheet.classList.contains('hidden')) openSheet();
+    else if (dx < 0 && !sheet.classList.contains('hidden')) sheet.classList.add('hidden');
+  }
+  startX = null; startY = null;
+}, { passive: true });
+
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function renderAttach() {
+  attachBox.innerHTML = '';
+  attachments.forEach((a, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    if (a.kind === 'image') {
+      const img = document.createElement('img');
+      img.src = 'data:' + a.mimeType + ';base64,' + a.data;
+      chip.appendChild(img);
+    }
+    const label = document.createElement('span');
+    label.textContent = a.name + (a.kind === 'file' && !a.path ? '（上传中…）' : '');
+    chip.appendChild(label);
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.onclick = () => { attachments.splice(idx, 1); renderAttach(); };
+    chip.appendChild(x);
+    attachBox.appendChild(chip);
+  });
+}
+plusBtn.onclick = () => picker.click();
+picker.onchange = async () => {
+  for (const file of picker.files) {
+    const dataUrl = await readAsDataURL(file);
+    const base64 = String(dataUrl).split(',')[1] || '';
+    if ((file.type || '').indexOf('image/') === 0) {
+      attachments.push({ kind: 'image', name: file.name, mimeType: file.type || 'image/png', data: base64 });
+    } else {
+      const id = Math.random().toString(36).slice(2);
+      attachments.push({ kind: 'file', id, name: file.name, data: base64, path: null });
+      ws.send(JSON.stringify({ type: 'file', id, name: file.name, data: base64 }));
+    }
+  }
+  picker.value = '';
+  renderAttach();
+};
+
 sendBtn.onclick = () => {
-  const text = input.value.trim();
-  if (!text || !ws || ws.readyState !== 1) return;
-  ws.send(JSON.stringify({ type: 'prompt', text }));
+  if (!ws || ws.readyState !== 1) return;
+  const pendingUpload = attachments.some((a) => a.kind === 'file' && !a.path);
+  if (pendingUpload) { add('note', '文件还在上传，稍等一下'); return; }
+  const images = attachments.filter((a) => a.kind === 'image').map((a) => ({ data: a.data, mimeType: a.mimeType, name: a.name }));
+  const paths = attachments.filter((a) => a.kind === 'file' && a.path).map((a) => a.path);
+  let text = input.value.trim();
+  if (!text && !images.length && !paths.length) return;
+  if (paths.length) text += (text ? '\n\n' : '') + '[附带的文件]\n' + paths.map((p) => '- ' + p).join('\n');
+  ws.send(JSON.stringify({ type: 'prompt', text, images }));
   input.value = '';
+  attachments = [];
+  renderAttach();
 };
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBtn.click();
@@ -244,5 +334,3 @@ input.addEventListener('keydown', (e) => {
 connect();
 </script>
 </body></html>
-
-

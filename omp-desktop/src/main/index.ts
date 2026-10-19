@@ -592,10 +592,10 @@ if (!app.requestSingleInstanceLock()) {
           }
         },
         history: (id: string) => store?.read(id) ?? [],
-        prompt: async (text: string) => {
+        prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
           try {
             emit({ t: "user", text });
-            await session?.prompt(text);
+            await session?.prompt(text, images);
             return { ok: true };
           } catch (err: any) {
             return { ok: false, error: String(err?.message ?? err) };
@@ -605,7 +605,7 @@ if (!app.requestSingleInstanceLock()) {
         cancel: () => void session?.cancel(),
         snapshot: () => ({
           id: currentSessionId ?? "",
-          title: store?.get(currentSessionId ?? "")?.title ?? "OMP Desktop",
+          title: store?.get(currentSessionId ?? "")?.title ?? "OT",
           cwd: sessionCwd,
           status: "idle",
           agent: currentAgentId,
@@ -641,10 +641,10 @@ if (!app.requestSingleInstanceLock()) {
             return { ok: false, error: String(err?.message ?? err) };
           }
         },
-        prompt: async (text: string) => {
+        prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
           try {
             emit({ t: "user", text });
-            await session?.prompt(text);
+            await session?.prompt(text, images);
             return { ok: true };
           } catch (err: any) {
             return { ok: false, error: String(err?.message ?? err) };
@@ -655,7 +655,7 @@ if (!app.requestSingleInstanceLock()) {
         cancel: () => void session?.cancel(),
         snapshot: () => ({
           id: currentSessionId ?? "",
-          title: store?.get(currentSessionId ?? "")?.title ?? "OMP Desktop",
+          title: store?.get(currentSessionId ?? "")?.title ?? "OT",
           cwd: sessionCwd,
           status: "idle",
           agent: currentAgentId,
@@ -757,6 +757,8 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
 
 
 

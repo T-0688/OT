@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
 import { randomBytes } from "node:crypto";
@@ -9,7 +9,7 @@ import type { AgentEvent } from "../shared/types.js";
 export type RemoteHooks = {
   sessions: () => { id: string; title: string; cwd: string; updatedAt?: string }[];
   open: (id: string) => Promise<{ ok: boolean; title?: string; error?: string }>;
-  prompt: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  prompt: (text: string, images?: { data: string; mimeType: string; name?: string }[]) => Promise<{ ok: boolean; error?: string }>;
   permission: (id: string, optionId: string) => void;
   cancel: () => void;
   snapshot: () => { id: string; title: string; cwd: string; status: string; agent: string; model: string };
@@ -208,8 +208,22 @@ export class RemoteServer {
     socket.on("close", () => this.clients.delete(socket));
     socket.on("message", (raw) => {
       try {
-        const msg = JSON.parse(String(raw)) as { type?: string; text?: string; id?: string; optionId?: string };
-        if (msg.type === "prompt" && msg.text) void this.hooks.prompt(msg.text);
+        const msg = JSON.parse(String(raw)) as { type?: string; text?: string; id?: string; optionId?: string; name?: string; data?: string; images?: { data: string; mimeType: string; name?: string }[] };
+        if (msg.type === "file" && msg.id && msg.data) {
+          try {
+            const dir = join(tmpdir(), "ot-mobile");
+            mkdirSync(dir, { recursive: true });
+            const safeName = String(msg.name ?? "file").replace(/[^\w.\-]+/g, "_").slice(-80);
+            const target = join(dir, `${Date.now()}-${safeName}`);
+            writeFileSync(target, Buffer.from(String(msg.data), "base64"));
+            socket.send(JSON.stringify({ t: "file_saved", id: msg.id, path: target }));
+          } catch (err: any) {
+            socket.send(JSON.stringify({ t: "note", text: `文件保存失败：${String(err?.message ?? err)}` }));
+          }
+        }
+        if (msg.type === "prompt" && (msg.text || (msg as any).images?.length)) {
+          void this.hooks.prompt(String(msg.text ?? ""), (msg as any).images);
+        }
         if (msg.type === "permission" && msg.id && msg.optionId) this.hooks.permission(msg.id, msg.optionId);
         if (msg.type === "cancel") this.hooks.cancel();
         if (msg.type === "sessions") {
@@ -249,6 +263,7 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
 
 
 

@@ -742,3 +742,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 设置 → 模型与 Agent 新增「当前 Agent」，切换即换后端（等价于新开会话）
 - 主题切换从顶栏移到左下角，紧挨「设置」：`[v1.1.0] [🌙] [⚙ 设置]`
 - 版本策略：每轮对话 +0.1，本轮 1.0.0 → 1.1.0
+
+### 43. 1.2.0：手机端右滑会话 + 上传附件（2026-10-19）
+
+- **右滑打开会话列表**：顶栏「会话」按钮删除，改为从左边缘（<70px）向右滑 >70px 打开；面板内左滑关闭，带 220ms 位移动画
+- **上传按钮**：输入框左侧 `＋`，可选多张图片和文件
+  - 图片 → base64 直接作为 ACP image 内容块随 prompt 发送
+  - 其他文件 → WS `{type:"file"}` 发到电脑，存 `%TEMP%\ot-mobile\<ts>-<name>`，回 `{t:"file_saved", path}`；发送时把路径拼进 prompt（`[附带的文件]`），agent 用 read 工具读
+  - 附件以 chip 展示（图片缩略图 + 文件名 + 删除），上传中显示「上传中…」，未完成时发送会提示
+- 版本 1.1.0 → 1.2.0
+
+**坑**：`mobile-page.ts` 由 `mobile/index.html` 生成，改页面后必须 `node tools/gen-mobile-page.mjs` 再 `npm run build`，否则桌面端 serve 的还是旧页面。
