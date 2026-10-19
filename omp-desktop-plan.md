@@ -936,3 +936,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.18.0 → 1.19.0
 
 **验证**：选中最后一条消息文本后按 Ctrl+C，`navigator.clipboard.readText()` 返回的正是选中内容。
+
+### 61. 1.20.0：状态栏恢复上下文占用与已用金额（2026-10-19）
+
+- 打开历史会话时从 JSONL 重放出最后一条 `usage`（used/size/costUsd），恢复上下文环和已用金额
+- `SessionMeta.stats` 增加 `used/size`，turn_end 时把最近一次 usage 的上下文与费用写入
+- 修复两处导致恢复失效的问题：
+  1. `openSession` 里恢复 usage 之后又执行了 `setUsage({})` 把它清空
+  2. agent 加载会话时推送空 usage 会覆盖已恢复值 —— 改为合并字段（`ev.used ?? prev.used`），并在 resume 后 1.2s 兜底重设
+- 版本 1.19.0 → 1.20.0
+
+**验证**：重启后自动打开 6 轮会话，状态栏显示 `1.00M | 29% | 21.48M tok | 第 6 轮 | $0.7774`。

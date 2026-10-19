@@ -1,0 +1,16 @@
+const PORT = "9344";
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page = list.find(t => t.type === "page" && !t.url.includes("ot-shot-overlay"));
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result ?? m.error); pending.delete(m.id); } };
+await new Promise(r => ws.onopen = r);
+const send = (m, p = {}) => new Promise(res => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const ev = async e => (await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }))?.result?.value;
+const items = await ev(`JSON.stringify([...document.querySelectorAll('.session-item, .sess, .side-session')].slice(0,6).map(b=>b.textContent.trim().slice(0,24)))`);
+console.log("sidebar:", items);
+await ev(`(() => { const b=document.querySelector('.session-item, .sess, .side-session'); if(b) b.click(); })()`);
+await wait(2500);
+console.log("status:", await ev(`document.querySelector('.statusbar')?.innerText.replace(/\\n/g,' | ')`));
+process.exit(0);

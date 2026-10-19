@@ -77,7 +77,7 @@ export type SessionMeta = {
   title: string;
   createdAt: string;
   updatedAt: string;
-  stats?: { tokens: number; cost: number; turns: number };
+  stats?: { tokens: number; cost: number; turns: number; used?: number; size?: number };
 };
 
 export type AgentInfo = {
@@ -207,6 +207,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

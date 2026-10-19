@@ -39,7 +39,7 @@ export class SessionStore {
     return [...this.index.sessions].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }
 
-  addTurnStats(id: string, tokens: number, cost: number): void {
+  addTurnStats(id: string, tokens: number, cost: number, used = 0, size = 0): void {
     const meta = this.get(id);
     if (!meta) return;
     const prev = meta.stats ?? { tokens: 0, cost: 0, turns: 0 };
@@ -47,6 +47,8 @@ export class SessionStore {
       tokens: prev.tokens + Math.max(0, Math.round(tokens)),
       cost: typeof cost === "number" && cost > 0 ? cost : prev.cost,
       turns: prev.turns + 1,
+      used: used || prev.used,
+      size: size || prev.size,
     };
     this.flush();
   }
@@ -157,5 +159,6 @@ export class SessionStore {
     return hits.sort((a, b) => b.count - a.count).slice(0, 30);
   }
 }
+
 
 

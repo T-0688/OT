@@ -56,13 +56,18 @@ function emit(event: AgentEvent): void {
   win?.webContents.send("agent:event", event);
   remote?.ingest(event);
 
+  if (event.t === "usage") {
+    if (typeof event.costUsd === "number") lastUsageCost = event.costUsd;
+    if (typeof event.used === "number") lastUsageUsed = event.used;
+    if (typeof event.size === "number") lastUsageSize = event.size;
+  }
   if (event.t === "user" && detectGithubIntent(event.text)) githubIntent = true;
   if (event.t === "turn_end") {
     notifyTurnDone();
     if (currentSessionId) {
       const u = event.usage;
       const tok = (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
-      store?.addTurnStats(currentSessionId, tok, 0);
+      store?.addTurnStats(currentSessionId, tok, lastUsageCost, lastUsageUsed, lastUsageSize);
     }
     if (githubIntent && settings?.get().githubAutoUpload) void autoUpload(sessionCwd);
   }
@@ -389,6 +394,9 @@ function searchFiles(root: string, query: string): { path: string; name: string 
 }
 
 let githubIntent = false;
+let lastUsageCost = 0;
+let lastUsageUsed = 0;
+let lastUsageSize = 0;
 
 function detectGithubIntent(text: string): boolean {
   return /(上传|推送|推到|提交|同步).{0,8}(github|git|仓库)/i.test(text) || /github.{0,8}(上传|推送|提交)/i.test(text);
@@ -1191,6 +1199,8 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
 
 
 

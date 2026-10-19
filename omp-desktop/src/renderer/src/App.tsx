@@ -336,7 +336,11 @@ export default function App() {
           setPermission((p) => (p && p.id === ev.id ? null : p));
           break;
         case "usage":
-          setUsage({ cost: ev.costUsd, used: ev.used, size: ev.size });
+          setUsage((prev) => ({
+            used: ev.used ?? prev.used,
+            size: ev.size ?? prev.size,
+            cost: ev.costUsd ?? prev.cost,
+          }));
           break;
         case "tool_update":
           if (ev.diff && ev.diff.path && sessionIdRef.current && turnIdRef.current && ev.diff.oldText !== undefined) {
@@ -671,11 +675,19 @@ export default function App() {
     let agent = meta.agentId;
     let rTokens = 0;
     let rTurns = 0;
+    let rUsed = 0;
+    let rSize = 0;
+    let rCost = 0;
     for (const ev of data.events) {
       replay = applyToItems(replay, ev);
       if (ev.t === "ready") {
         configs = ev.configOptions ?? [];
         agent = ev.agentId;
+      }
+      if (ev.t === "usage") {
+        if (typeof ev.used === "number") rUsed = ev.used;
+        if (typeof ev.size === "number") rSize = ev.size;
+        if (typeof ev.costUsd === "number") rCost = ev.costUsd;
       }
       if (ev.t === "turn_end") {
         rTurns += 1;
@@ -685,10 +697,15 @@ export default function App() {
     }
     setItems(replay);
     setTotalTokens(Math.max(meta.stats?.tokens ?? 0, rTokens));
-    setSessionCost(meta.stats?.cost ?? 0);
+    setSessionCost(Math.max(meta.stats?.cost ?? 0, rCost));
     setSessionTurnBase(Math.max(meta.stats?.turns ?? 0, rTurns));
+    const st = meta.stats;
+    const used = rUsed || st?.used || 0;
+    const size = rSize || st?.size || 0;
+    const cost = Math.max(st?.cost ?? 0, rCost);
+    const restoredUsage = { used, size, cost: cost || undefined };
+    setUsage(restoredUsage);
     setStats({});
-    setUsage({});
     setConfigOptions(configs);
     setAgentId(agent);
     setSessionId(meta.id);
@@ -700,6 +717,10 @@ export default function App() {
     stickToBottom.current = true;
     void window.api.saveSettings({ lastSessionId: meta.id });
     await window.api.resume(meta.id);
+    // agent 加载会话时可能推送一条空 usage，稍后再兜底一次
+    setTimeout(() => {
+      setUsage((prev) => (prev.used || prev.size ? prev : restoredUsage));
+    }, 1200);
   };
 
   useEffect(() => {
@@ -1319,7 +1340,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.19.0</span>
+            <span className="version">v1.20.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -3125,6 +3146,11 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
+
 
 
 
