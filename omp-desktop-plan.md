@@ -1004,3 +1004,13 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.23.0 → 1.24.0
 
 **验证**：把 `OtWsClient` 抽到 JVM 用真实服务端跑通（收到 hello、ping 正常、close 正常）；APK manifest 确认含 `dev.ot.app.NotifyService` 与全部权限。真机后台/锁屏行为需要你实测。
+
+### 66. 1.25.0：修复设置页白屏 + 全局错误边界（2026-10-19）
+
+根因：1.17 加「局域网地址」effect 时，`useEffect(... [setTab])` 被插到了 `const [setTab, setSetTab] = useState(...)` **之前**，触发 TDZ：`Cannot access 'setTab' before initialization`。SettingsPanel 渲染抛错，整棵树被卸载 → 白屏。之前测试没点开设置，所以一直没暴露。
+
+- 把该 effect 移到状态声明之后
+- `main.tsx` 增加 `ErrorBoundary`：渲染异常时显示错误信息 + 「重新加载 / 重试渲染」，不再整屏白
+- 版本 1.24.0 → 1.25.0
+
+**验证**：点设置后 `panel.settings` 存在、左侧 6 个分类、右侧显示「外观/通知」，截图正常。

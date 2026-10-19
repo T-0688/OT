@@ -1340,7 +1340,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.24.0</span>
+            <span className="version">v1.25.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2491,11 +2491,12 @@ function SettingsPanel({
   const [cmKey, setCmKey] = useState("");
   const [cmMsg, setCmMsg] = useState("");
   const [lanList, setLanList] = useState<string[]>([]);
+  const [setTab, setSetTab] = useState<"general" | "models" | "balance" | "mobile" | "github" | "data">("general");
+
   useEffect(() => {
     if (setTab !== "mobile") return;
     void window.api.lanUrls().then(setLanList).catch(() => setLanList([]));
   }, [setTab]);
-  const [setTab, setSetTab] = useState<"general" | "models" | "balance" | "mobile" | "github" | "data">("general");
 
   useEffect(() => {
     void window.api.appVersion().then(setVersion).catch(() => setVersion(""));
@@ -3146,6 +3147,8 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
 
 
 
