@@ -4107,3 +4107,58 @@ body {
   background: color-mix(in srgb, var(--panel) 72%, transparent);
   backdrop-filter: blur(14px);
 }
+
+/* 工具卡默认折叠 */
+details.tool {
+  padding: 0;
+  overflow: hidden;
+}
+
+details.tool > summary.tool-head {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  margin: 0;
+  align-items: center;
+}
+
+details.tool > summary.tool-head::-webkit-details-marker {
+  display: none;
+}
+
+details.tool > summary.tool-head::after {
+  content: "";
+}
+
+details.tool[open] > summary.tool-head {
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-hint {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+details.tool[open] .tool-hint::before {
+  content: "";
+}
+
+details.tool > .diff,
+details.tool > .tool-output {
+  margin: 0;
+}
+
+/* 停止按钮：蓝底 */
+.send-icon.stop {
+  background: #2563eb;
+  color: #fff;
+}
+
+.send-icon.stop:hover {
+  background: #1d4ed8;
+}
+
+.statusbar .stat.live {
+  color: color-mix(in srgb, var(--ok) 70%, var(--text));
+}

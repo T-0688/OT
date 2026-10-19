@@ -114,6 +114,16 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "失败",
 };
 
+function estimateTokens(text: string): number {
+  let cjk = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) cjk++;
+    else other++;
+  }
+  return cjk + Math.ceil(other / 4);
+}
+
 function fmtDuration(ms: number): string {
   const sec = Math.max(0, Math.round(ms / 1000));
   if (sec < 60) return `${sec} 秒`;
@@ -204,6 +214,9 @@ export default function App() {
   const [phoneOnline, setPhoneOnline] = useState(false);
   const [balance, setBalance] = useState<{ total?: number; currency?: string }>({});
   const [officialModels, setOfficialModels] = useState<string[] | null>(null);
+  const [liveSpeed, setLiveSpeed] = useState(0);
+  const liveChars = useRef(0);
+  const liveStart = useRef(0);
   const [totalTokens, setTotalTokens] = useState(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number; cwd: string; name: string; pinned: boolean } | null>(null);
@@ -290,6 +303,7 @@ export default function App() {
                     setStatus("ready");
           break;
         case "text":
+          liveChars.current += estimateTokens(ev.text);
           queue("text", ev.text);
           break;
         case "thinking":
@@ -322,6 +336,7 @@ export default function App() {
           flush();
           setRunning(false);
           setStatus("ready");
+          setLiveSpeed(0);
           setFailedText(null);
           const seconds = (Date.now() - turnStart.current) / 1000;
           const out = ev.usage?.outputTokens ?? 0;
@@ -378,6 +393,14 @@ export default function App() {
     root.style.setProperty("--bg-shade", String(appSettings?.bgShade ?? 0.55));
     root.style.setProperty("--bg-blur", `${appSettings?.bgBlur ?? 12}px`);
   }, [appSettings?.bgShade, appSettings?.bgBlur]);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      const elapsed = (Date.now() - liveStart.current) / 1000;
+      if (elapsed > 0.8) setLiveSpeed(liveChars.current / elapsed);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [running]);
   useEffect(() => {
     if (!appSettings?.deepseekApiKey?.trim() || !appSettings?.officialModelsOnly) {
       setOfficialModels(null);
@@ -451,6 +474,9 @@ export default function App() {
     }
     lastUser.current = content;
     turnStart.current = Date.now();
+    liveChars.current = 0;
+    liveStart.current = Date.now();
+    setLiveSpeed(0);
     setRunning(true);
     setStatus("running");
     stickToBottom.current = true;
@@ -1203,7 +1229,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.13.0</span>
+            <span className="version">v1.14.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1550,7 +1576,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="statusbar">
+        <div className="statusbar" data-live={liveSpeed} data-chars={liveChars.current}>
           <span className={`state ${status}`}>
             {status === "ready"
               ? "就绪"
@@ -1581,7 +1607,11 @@ export default function App() {
             {usage.size ? fmtTokens(usage.size) : "—"}
             <span className="muted">{ctxPct.toFixed(0)}%</span>
           </span>
-          {stats.speed ? (
+          {running && liveSpeed > 0 ? (
+            <span className="stat live" title="实时输出速度（按字符估算）">
+              ~{liveSpeed >= 10 ? liveSpeed.toFixed(0) : liveSpeed.toFixed(1)} tok/s
+            </span>
+          ) : stats.speed ? (
             <span className="stat" title="本回合输出速度">
               {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
             </span>
@@ -2126,22 +2156,19 @@ function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: It
     );
   }
 
+  const hasDetail = Boolean(item.diff || item.text);
   return (
-    <div className={`tool ${item.status}`}>
-      <div className="tool-head">
+    <details className={`tool ${item.status}`}>
+      <summary className="tool-head">
         <span className="tool-icon">{item.toolKind === "execute" ? "$" : item.toolKind === "edit" ? "±" : "◆"}</span>
         <span className="tool-title">{item.title}</span>
         <span className="tool-status">{STATUS_LABEL[item.status] ?? item.status}</span>
-      </div>
+        {hasDetail ? <span className="tool-hint">展开</span> : null}
+      </summary>
       {item.diff ? <DiffView diff={item.diff} /> : null}
       {item.text && !item.diff ? <pre className="tool-output">{item.text}</pre> : null}
-      {item.text && item.diff ? (
-        <details className="tool-extra">
-          <summary>原始输出</summary>
-          <pre className="tool-output">{item.text}</pre>
-        </details>
-      ) : null}
-    </div>
+      {item.text && item.diff ? <pre className="tool-output">{item.text}</pre> : null}
+    </details>
   );
 }
 
@@ -2982,6 +3009,10 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 

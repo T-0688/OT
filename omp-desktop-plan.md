@@ -871,3 +871,12 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.12.0 → 1.13.0
 
 **验证**：过滤后 deepseek 只剩 `DeepSeek V4.1 Flash` 与 `DeepSeek V4 Pro`，第三方（GPT-6、GLM、kimi、aliyun 的 deepseek 副本）照常显示。
+
+### 55. 1.14.0：实时 tok/s、蓝色停止键、工具卡折叠（2026-10-19）
+
+- 实时速度：流式文本用字符估算 token（CJK 1、其他 /4），运行中每 500ms 刷新 `~N tok/s`，回合结束切回精确值
+- 停止按钮改成蓝底白图标（rgb(37,99,235)）
+- 工具调用卡默认折叠：`div.tool` → `details.tool`，`summary` 显示图标/标题/状态，点开才看 diff 和输出；解决一轮里工具卡片过长
+- 版本 1.13.0 → 1.14.0
+
+**验证**：运行中状态栏出现 `~202 tok/s`；停止键背景 rgb(37,99,235)；工具卡 `details.tool` 默认 closed。
