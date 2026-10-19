@@ -916,6 +916,7 @@ app.on("second-instance", () => {
       currentAgentId = meta.agentId;
       currentSessionId = id;
       session = new AgentSession(findAgent(meta.agentId), emit);
+      session.setAutoApprove(settings!.get().approvalMode === "auto");
       try {
         await session.resume(id, meta.cwd);
         return { ok: true };
@@ -969,6 +970,7 @@ app.on("second-instance", () => {
             currentAgentId = meta.agentId;
             currentSessionId = id;
             session = new AgentSession(findAgent(meta.agentId), emit);
+      session.setAutoApprove(settings!.get().approvalMode === "auto");
         session.setExtraArgs(agentExtraArgs());
             await session.resume(id, meta.cwd);
             return { ok: true, title: meta.title };
@@ -1073,6 +1075,7 @@ app.on("second-instance", () => {
             currentAgentId = meta.agentId;
             currentSessionId = id;
             session = new AgentSession(findAgent(meta.agentId), emit);
+      session.setAutoApprove(settings!.get().approvalMode === "auto");
         session.setExtraArgs(agentExtraArgs());
             await session.resume(id, meta.cwd);
             return { ok: true, title: meta.title };
@@ -1201,6 +1204,8 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
 
 
 

@@ -1084,3 +1084,15 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 自启：启动文件夹 `OT-WeChat-Bridge.vbs` → 指向新目录的 `run-loop.cmd`（隐藏窗口 + 崩溃重启）
 - 仓库里 `wechat-bridge/` 已移除，协议细节留在本节
 - 注意：`D:\.Daily\DeepSeek Harness\wecom-bridge` 是既有的「企业微信 ↔ DSH」桥接，本次未改动
+
+### 72. 1.29.0：恢复会话也应用「完全权限」+ 微信最高权限（2026-10-19）
+
+问题：`agent:start` 会给新会话 `setAutoApprove(settings.approvalMode === "auto")`，但 **`agent:resume` / 远程 open 的三处 resume 路径没有设置**。OT 启动时自动恢复上次会话 → 走 resume → autoApprove 恒为 false，于是微信里每次工具调用都弹权限，桥接只能拒。
+
+- 三处 resume 均补 `session.setAutoApprove(settings!.get().approvalMode === "auto")`
+- 微信桥接：权限选项字段从 `id` 修正为 `optionId`；优先选「allow_always」，其次 allow
+- 微信回复加会话前缀（如 `【网站】`），知道是哪条会话答的
+- 桥接新增 `node bridge.mjs ask "问题"`，本地直测不用经过微信
+- 版本 1.28.0 → 1.29.0
+
+**验证**：`node bridge.mjs ask "用 pwd 看一下当前目录"` → `{"text":"D:\\.Daily\\网站","label":"【网站】"}`，工具直接执行，无权限弹窗。
