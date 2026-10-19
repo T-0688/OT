@@ -195,6 +195,8 @@ export type RendererApi = {
   getBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }>;
   deepseekModels(): Promise<{ ok: boolean; ids: string[]; error?: string }>;
   lanUrls(): Promise<string[]>;
+  onScreenshot(cb: (base64: string) => void): () => void;
+  startScreenshot(): Promise<void>;
   uploadNow(): Promise<{ ok: boolean; error?: string }>;
   fixGitignore(): Promise<{ ok: boolean; added: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
@@ -204,6 +206,8 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
+
 
 
 

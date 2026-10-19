@@ -914,3 +914,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 桌面设置 → 手机访问 新增「局域网地址」列表（点击复制），同 Wi-Fi 下比 Cloudflare 隧道快很多
 - 修复主进程 `networkInterfaces` 未导入导致 `net:lan` 报错
 - 版本 1.16.0 → 1.17.0
+
+### 59. 1.18.0：截屏提问（Ctrl+Shift+A）（2026-10-19）
+
+- 全局快捷键 `Ctrl+Shift+A` 触发截屏（`globalShortcut`），程序在后台也能用
+- 主进程用 `desktopCapturer` 抓当前鼠标所在的显示器，写临时 PNG，打开全屏透明遮罩窗口
+- 遮罩里拖选区域（带蓝色选框和提示），Esc 取消；松开后按 DPI 比例裁剪成 PNG
+- 裁剪结果通过 `screenshot:capture` 发给主窗口，渲染端直接加进输入框附件（最多 6 张）并聚焦输入框
+- 命令面板新增「截屏提问」；`will-quit` 时注销快捷键
+- 版本 1.17.0 → 1.18.0
+
+**验证**：SendKeys 模拟 Ctrl+Shift+A 后出现遮罩窗口；CDP 拖拽 400×270 区域后输入框出现 1 张缩略图。

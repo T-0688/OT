@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, Notification, protocol, shell } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, net, Notification, protocol, screen, shell } from "electron";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
+import { tmpdir } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -101,6 +102,87 @@ function notifyTurnDone(): void {
   note.show();
 }
 
+let shotWin: BrowserWindow | null = null;
+
+async function startScreenshot(): Promise<void> {
+  if (shotWin) return;
+  try {
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    const scale = display.scaleFactor || 1;
+    const width = Math.round(display.size.width * scale);
+    const height = Math.round(display.size.height * scale);
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: { width, height },
+      fetchWindowIcons: false,
+    });
+    const source = sources.find((s) => String(s.display_id) === String(display.id)) ?? sources[0];
+    if (!source) return;
+    const png = source.thumbnail.toPNG();
+    const imgPath = join(tmpdir(), `ot-shot-${Date.now()}.png`);
+    writeFileSync(imgPath, png);
+
+    const overlay = join(tmpdir(), "ot-shot-overlay.html");
+    writeFileSync(
+      overlay,
+      `<!doctype html><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:crosshair;font-family:system-ui}
+#wrap{position:fixed;inset:0;background:rgba(0,0,0,.35)}
+#img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;user-select:none;-webkit-user-drag:none}
+#sel{position:absolute;border:1px solid #4c8dff;background:rgba(76,141,255,.14);display:none;pointer-events:none}
+#hint{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(17,18,22,.86);color:#fff;padding:6px 12px;border-radius:8px;font-size:12px}
+</style>
+<div id="wrap"><img id="img" src="__IMG__"><div id="sel"></div></div>
+<div id="hint">拖动选择区域 · Esc 取消</div>
+<script>
+const { ipcRenderer } = require('electron');
+const img = document.getElementById('img');
+const sel = document.getElementById('sel');
+let sx=0, sy=0, dragging=false;
+img.addEventListener('mousedown', (e) => { dragging=true; sx=e.clientX; sy=e.clientY; sel.style.display='block'; sel.style.left=sx+'px'; sel.style.top=sy+'px'; sel.style.width='0px'; sel.style.height='0px'; });
+window.addEventListener('mousemove', (e) => { if(!dragging) return; const x=Math.min(e.clientX,sx), y=Math.min(e.clientY,sy); const w=Math.abs(e.clientX-sx), h=Math.abs(e.clientY-sy); sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px'; });
+window.addEventListener('mouseup', async (e) => {
+  if(!dragging) return; dragging=false;
+  const x=Math.min(e.clientX,sx), y=Math.min(e.clientY,sy);
+  const w=Math.abs(e.clientX-sx), h=Math.abs(e.clientY-sy);
+  if (w<4 || h<4) { ipcRenderer.send('shot:cancel'); return; }
+  const img0 = new Image(); img0.src = img.src;
+  await new Promise((r)=>{ if(img0.complete) r(); else img0.onload=r; });
+  const dpr = img0.naturalWidth / window.innerWidth;
+  const c = document.createElement('canvas');
+  c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
+  c.getContext('2d').drawImage(img0, x*dpr, y*dpr, w*dpr, h*dpr, 0, 0, c.width, c.height);
+  ipcRenderer.send('shot:done', c.toDataURL('image/png'));
+});
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') ipcRenderer.send('shot:cancel'); });
+</script>`.replace("__IMG__", `file:///${imgPath.replace(/\\/g, "/")}`),
+      "utf8",
+    );
+
+    shotWin = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      webPreferences: { nodeIntegration: true, contextIsolation: false },
+    });
+    shotWin.setAlwaysOnTop(true, "screen-saver");
+    await shotWin.loadFile(overlay);
+    shotWin.on("closed", () => {
+      shotWin = null;
+    });
+  } catch (err) {
+    console.error("screenshot failed", err);
+  }
+}
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1240,
@@ -584,6 +666,22 @@ app.on("second-instance", () => {
 
   app.whenReady().then(() => {
     app.setAppUserModelId("com.local.ot");
+
+    globalShortcut.register("CommandOrControl+Shift+A", () => {
+      void startScreenshot();
+    });
+    ipcMain.handle("screenshot:start", () => void startScreenshot());
+    ipcMain.on("shot:cancel", () => {
+      shotWin?.close();
+    });
+    ipcMain.on("shot:done", (_e, dataUrl: string) => {
+      shotWin?.close();
+      const base64 = String(dataUrl ?? "").split(",")[1] ?? "";
+      if (!base64) return;
+      win?.show();
+      win?.focus();
+      win?.webContents.send("screenshot:capture", base64);
+    });
     // 数据目录统一为 OT；把旧的 omp-desktop 内容合并进来（只补不删）
     const dataDir = join(app.getPath("appData"), "OT");
     const legacyDir = join(app.getPath("appData"), "omp-desktop");
@@ -1049,6 +1147,10 @@ app.on("second-instance", () => {
     });
   });
 
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+  });
+
   app.on("window-all-closed", () => {
     disposeSession();
     if (process.platform !== "darwin") app.quit();
@@ -1058,6 +1160,11 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
+
+
+
 
 
 

@@ -466,6 +466,16 @@ export default function App() {
     return offClients;
   }, []);
   useEffect(() => {
+    const off = window.api.onScreenshot((base64) => {
+      setAttachments((prev) => [...prev, { data: base64, mimeType: "image/png", name: "screenshot.png" }].slice(0, 6));
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLTextAreaElement>(".composer textarea");
+        el?.focus();
+      });
+    });
+    return off;
+  }, []);
+  useEffect(() => {
     const off = window.api.onEvent(handleEvent);
     void (async () => {
       setAgents(await window.api.agents());
@@ -1074,6 +1084,7 @@ export default function App() {
   const commands: PaletteCommand[] = useMemo(() => {
     const list: PaletteCommand[] = [
       { id: "new", label: "新会话", hint: "Ctrl+N", run: () => void newSession() },
+      { id: "shot", label: "截屏提问", hint: "Ctrl+Shift+A", run: () => void window.api.startScreenshot() },
       { id: "dir", label: "切换工作目录…", run: () => void changeDir() },
       { id: "theme", label: `切换主题（当前：${theme === "dark" ? "深色" : "浅色"}）`, run: () => setTheme(theme === "dark" ? "light" : "dark") },
       { id: "bg-solid", label: `背景：纯色${bgMode === "solid" ? "（当前）" : ""}`, run: () => setBgMode("solid") },
@@ -1298,7 +1309,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.17.0</span>
+            <span className="version">v1.18.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -3104,6 +3115,9 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
 
 
 
