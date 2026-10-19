@@ -25,6 +25,7 @@ public class NotifyService extends Service {
     private static final int FG_ID = 1001;
 
     public static volatile boolean RUNNING = false;
+    public static volatile String STATE = "idle";
     private volatile boolean running;
     private volatile OtWsClient client;
     private volatile long lastSeen = System.currentTimeMillis();
@@ -85,6 +86,16 @@ public class NotifyService extends Service {
         return START_STICKY;
     }
 
+    private void setState(String state) {
+        STATE = state;
+        try {
+            getSharedPreferences("omp", MODE_PRIVATE).edit().putString("svc_state", state).apply();
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(FG_ID, foregroundNotification());
+        } catch (Exception ignored) {
+        }
+    }
+
     private String wsUrl() {
         SharedPreferences prefs = getSharedPreferences("omp", MODE_PRIVATE);
         String host = prefs.getString("ws_host", "");
@@ -104,10 +115,12 @@ public class NotifyService extends Service {
                 continue;
             }
             try {
+                setState("连接中");
                 OtWsClient c = OtWsClient.connect(url, listener);
                 client = c;
                 lastSeen = System.currentTimeMillis();
                 listener.onOpen();
+                setState("已连接");
                 backoff = 800;
                 failures = 0;
                 while (running && !c.isClosed()) {
@@ -115,6 +128,7 @@ public class NotifyService extends Service {
                 }
             } catch (Exception ignored) {
                 failures++;
+                setState("连接失败");
                 if (failures == 3) {
                     notifyTask("OT", "后台连接失败，请打开一次 OT 检查网络");
                 }
@@ -209,7 +223,7 @@ public class NotifyService extends Service {
                 : new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setContentTitle("OT")
-                .setContentText("保持连接中")
+                .setContentText("后台：" + STATE)
                 .setContentIntent(openIntent())
                 .setOngoing(true)
                 .build();
@@ -253,5 +267,6 @@ public class NotifyService extends Service {
         super.onDestroy();
     }
 }
+
 
 

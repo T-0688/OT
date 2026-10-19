@@ -84,6 +84,10 @@
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 body.light .toast { background: rgba(17,18,22,.9); }
+.perm-banner {
+  position: sticky; top: 0; z-index: 30; padding: 8px 14px; margin: 0;
+  background: #b45309; color: #fff; font-size: 13px; text-align: center;
+}
 </style></head>
 <body>
 <header><span class="dot" id="dot"></span><b id="title">OT</b><button id="theme" class="ghost icon-btn2">☾</button><button id="refresh" class="ghost icon-btn2">↻</button><span class="sub" id="sub">连接中…</span></header>
@@ -192,6 +196,41 @@ function toast(text) {
     setTimeout(() => el.classList.add('show'), 20);
     setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 2600);
   } catch (e) {}
+}
+
+function ensureNotifyPerm() {
+  try {
+    if (!window.OTNotify || !window.OTNotify.canNotify) return;
+    if (window.OTNotify.canNotify()) return;
+    const bar = document.createElement('div');
+    bar.className = 'perm-banner';
+    bar.textContent = '通知权限未开启，点此授权';
+    bar.onclick = () => {
+      try { window.OTNotify.requestNotifyPermission(); } catch (e) {}
+      setTimeout(() => bar.remove(), 1500);
+    };
+    document.body.appendChild(bar);
+  } catch (e) {}
+}
+
+function diagnose() {
+  let can = null;
+  let svc = false;
+  let state = '?';
+  try {
+    if (window.OTNotify) {
+      if (window.OTNotify.canNotify) can = window.OTNotify.canNotify();
+      if (window.OTNotify.serviceRunning) svc = window.OTNotify.serviceRunning();
+      if (window.OTNotify.serviceState) state = window.OTNotify.serviceState();
+    }
+  } catch (e) {}
+  const msg = '通知权限：' + (can === null ? '未知（非 App 环境）' : can ? '已授权' : '未授权') +
+    '\n后台服务：' + (svc ? '运行中（' + state + '）' : '未运行') +
+    '\n页面连接：' + (ws && ws.readyState === 1 ? '已连接' : '未连接') +
+    '\n\n要发送一条测试通知吗？';
+  if (confirm(msg)) {
+    try { window.OTNotify && window.OTNotify.testNotify && window.OTNotify.testNotify(); } catch (e) {}
+  }
 }
 
 function showLocalNotification(title, body) {
@@ -433,14 +472,28 @@ setInterval(() => {
 }, 5000);
 
 window.__otResume = () => {
-  if (!ws || ws.readyState > 1) { retry = 800; connect(); }
+  if (!ws || ws.readyState > 1) { retry = 800; ensureNotifyPerm();
+connect(); }
 };
 window.addEventListener('online', () => {
-  if (!ws || ws.readyState > 1) connect();
+  if (!ws || ws.readyState > 1) ensureNotifyPerm();
+connect();
+});
+
+let dotTaps = 0;
+let dotTimer = null;
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'dot') {
+    dotTaps++;
+    clearTimeout(dotTimer);
+    dotTimer = setTimeout(() => { dotTaps = 0; }, 1200);
+    if (dotTaps >= 3) { dotTaps = 0; diagnose(); }
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && (!ws || ws.readyState > 1)) connect();
+  if (!document.hidden && (!ws || ws.readyState > 1)) ensureNotifyPerm();
+connect();
 });
 
 // 长按标题可改连接地址（同一 Wi-Fi 下用局域网地址明显更快）
@@ -486,9 +539,12 @@ try {
   }
 } catch {}
 
+ensureNotifyPerm();
 connect();
 </script>
 </body></html>
+
+
 
 
 

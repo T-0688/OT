@@ -303,6 +303,27 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String serviceState() {
+            return NotifyService.STATE;
+        }
+
+        @JavascriptInterface
+        public void testNotify() {
+            ensureChannel();
+            notifyTask("OT", "测试通知：如果你看到这条，通知链路正常");
+        }
+
+        @JavascriptInterface
+        public void requestNotifyPermission() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public boolean canNotify() {
             if (Build.VERSION.SDK_INT >= 33) {
                 return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
@@ -375,6 +396,7 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.__otResume && window.__otResume()", null);
         }
     }}
+
 
 
 

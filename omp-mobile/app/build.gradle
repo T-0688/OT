@@ -8,8 +8,8 @@ android {
         applicationId "dev.ot.app"
         minSdk 24
         targetSdk 33
-        versionCode 360
-        versionName "1.26.0"
+        versionCode 370
+        versionName "1.27.0"
     }
 
     buildTypes {
@@ -21,6 +21,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
 
 
 

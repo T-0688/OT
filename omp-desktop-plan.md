@@ -1025,3 +1025,12 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 连接连续失败 3 次弹一次「后台连接失败，请打开一次 OT 检查网络」
 - 去重：`NotifyService.RUNNING` 静态标记 + 桥 `serviceRunning()`；服务在跑时页面不再重复发通知
 - 版本 1.25.0 → 1.26.0
+
+### 68. 1.27.0：手机通知诊断（2026-10-19）
+
+- 前台常驻通知文案改成 `后台：<状态>`（连接中 / 已连接 / 连接失败），一眼能看出服务是否在跑、是否连上
+- 页面新增通知权限横幅：未授权时顶部橙色条「通知权限未开启，点此授权」，点击直接拉起系统权限弹窗
+- 新增原生桥诊断：`serviceState()` / `serviceRunning()` / `testNotify()` / `requestNotifyPermission()`
+- **连点状态圆点 3 次**打开诊断：显示「通知权限 / 后台服务状态 / 页面连接」，可直接发一条测试通知
+- `NotifyService` 维护 `STATE` 并在连接过程更新
+- 版本 1.26.0 → 1.27.0
