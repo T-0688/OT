@@ -316,6 +316,21 @@ function ghCredential(): { user: string; token: string } | null {
   }
 }
 
+const SENSITIVE_PATTERNS = [
+  /(^|\/)\.env($|\.)/i,
+  /\.env\.(local|dev|prod|production|staging)$/i,
+  /\.(pem|key|p12|pfx|keystore|jks|ppk)$/i,
+  /(^|\/)id_(rsa|dsa|ecdsa|ed25519)$/i,
+  /(^|\/)\.(npmrc|pypirc|netrc|git-credentials)$/i,
+  /(^|\/)(credentials|secrets?)\.(json|ya?ml|toml|ini)$/i,
+  /(^|\/)\.aws\/credentials$/i,
+  /(^|\/)\.ssh\//i,
+];
+
+function sensitiveHits(files: string[]): string[] {
+  return files.filter((f) => SENSITIVE_PATTERNS.some((re) => re.test(f)));
+}
+
 async function autoUpload(cwd: string): Promise<void> {
   const cfg = settings!.get();
   try {
@@ -328,6 +343,15 @@ async function autoUpload(cwd: string): Promise<void> {
     }
     if (!gitRun(root, ["status", "--porcelain"]).trim()) return;
     gitRun(root, ["add", "-A"]);
+    if (settings?.get().githubBlockSecrets) {
+      const staged = gitRun(root, ["diff", "--cached", "--name-only"]).split(/\r?\n/).filter(Boolean);
+      const hits = sensitiveHits(staged);
+      if (hits.length) {
+        try { gitRun(root, ["reset"]); } catch { /* ignore */ }
+        emit({ t: "note", text: `已拦截自动上传：检测到敏感文件\n${hits.slice(0, 8).map((f) => `· ${f}`).join("\n")}\n请先加入 .gitignore 或从工作区移除。` });
+        return;
+      }
+    }
     gitRun(root, ["-c", "user.name=T-Kepler", "-c", "user.email=2521674913@qq.com", "commit", "-m", `chore: auto upload ${new Date().toISOString().slice(0, 19)}`]);
     let hasRemote = true;
     try {
@@ -780,6 +804,14 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     ipcMain.handle("balance:get", () => fetchBalance());
+    ipcMain.handle("github:uploadNow", async () => {
+      try {
+        await autoUpload(sessionCwd);
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: String(err?.message ?? err) };
+      }
+    });
     ipcMain.handle("remote:status", () => remoteStatus());
 
     ipcMain.handle("remote:start", async () => {
@@ -921,6 +953,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 

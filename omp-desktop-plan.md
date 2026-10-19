@@ -798,3 +798,13 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.4.0 → 1.5.0
 
 **注意**：自动上传会真的推代码到 GitHub，首次使用请确认工作区内容适合公开。
+
+### 47. 1.6.0：上传前敏感文件拦截（2026-10-19）
+
+- `autoUpload` 在 `git add -A` 之后检查暂存区文件名，命中规则则 `git reset` 撤销暂存并中止上传
+- 规则：`.env` / `.env.*`、`*.pem|key|p12|pfx|keystore|jks|ppk`、`id_rsa|id_dsa|id_ecdsa|id_ed25519`、`.npmrc|.pypirc|.netrc|.git-credentials`、`credentials.*|secrets.*`、`.aws/credentials`、`.ssh/*`
+- 命中时插入 note：列出前 8 个文件，提示加入 .gitignore 或移出工作区
+- 设置 → GitHub 增加「拦截敏感文件」开关（默认开）和「立即上传一次」按钮（便于手动触发/验证）
+- 版本 1.5.0 → 1.6.0
+
+**验证**：临时仓库放入 `.env` 与 `server.key`，触发上传 → 返回 ok、暂存被撤销，对话里出现「已拦截自动上传：检测到敏感文件 · .env · server.key」。

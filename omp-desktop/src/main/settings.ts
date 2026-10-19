@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   planModel: "",
   deepseekApiKey: "",
   githubAutoUpload: false,
+  githubBlockSecrets: true,
   customModels: [],
   tunnelToken: "",
   tunnelHostname: "",
@@ -81,6 +82,7 @@ export class SettingsStore {
     return this.current;
   }
 }
+
 
 
 

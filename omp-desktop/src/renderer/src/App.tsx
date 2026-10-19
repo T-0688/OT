@@ -1164,7 +1164,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.5.0</span>
+            <span className="version">v1.6.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2500,7 +2500,31 @@ function SettingsPanel({
             <span>{settings.githubAutoUpload ? "开启" : "关闭"}</span>
           </label>
         </div>
-        <div className="set-hint">开启后：会话里你说过「上传/推送到 GitHub」，之后每轮结束会自动 commit + push；没有远端仓库时会用本机 git 凭据自动建一个公开仓库。</div>
+        <div className="set-row">
+          <label>拦截敏感文件</label>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.githubBlockSecrets}
+              onChange={(e) => onChange({ githubBlockSecrets: e.target.checked })}
+            />
+            <span>{settings.githubBlockSecrets ? "开启" : "关闭"}</span>
+          </label>
+        </div>
+        <div className="set-row">
+          <label>立即上传一次</label>
+          <div className="set-inline">
+            <button
+              className="ghost"
+              onClick={async () => {
+                const res = await window.api.uploadNow();
+                setCmMsg(res.ok ? "已触发上传（看对话里的提示）" : `失败：${res.error}`);
+              }}
+            >
+              上传当前工作区
+            </button>
+          </div>
+        </div>        <div className="set-hint">开启后：会话里你说过「上传/推送到 GitHub」，之后每轮结束会自动 commit + push；没有远端仓库时会用本机 git 凭据自动建一个公开仓库。</div>
       </section>
       <section className="set-group">
         <h3>外观</h3>
@@ -2814,6 +2838,8 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
 
 
 
