@@ -726,3 +726,12 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 样式：代码块深底圆角、行内代码胶囊、列表缩进、链接蓝色
 
 同一份 `mobile/index.html` 同时服务 APK 本地壳和浏览器版。
+
+### 41. 改名 OT（2026-10-19）
+
+- 产品名：`productName: "OT"`，窗口标题/通知/侧栏品牌/页面 title 全部 OT
+- 安装包：`OT-Setup-1.0.0.exe`（安装到 `%LOCALAPPDATA%\Programs\OT`），旧的 OMP Desktop 已卸载
+- 手机端：APK label `OT`，`OT-Mobile-1.0.0.apk`
+- **数据目录保持不变**：`app.setPath("userData", appData/omp-desktop)`，所以会话、设置、隧道 token、checkpoints 全部沿用，没丢
+- GitHub 仓库改名为 `T-Kepler/ot`，release 资产替换为 OT 版
+- 目录名（omp-desktop/omp-mobile）保留，避免破坏构建路径
