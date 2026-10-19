@@ -107,11 +107,22 @@ export class RemoteServer {
   async start(): Promise<{ url: string; token: string }> {
     if (this.http) return { url: this.url(), token: this.token };
     const server = createServer((req, res) => this.handleHttp(req, res));
-    this.wss = new WebSocketServer({ server, path: "/ws" });
+    this.wss = new WebSocketServer({ server, path: "/ws", perMessageDeflate: { threshold: 512 } });
     this.wss.on("connection", (socket, req) => this.handleWs(socket, req));
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(this.port, "127.0.0.1", () => resolve());
+    await new Promise<void>((resolve) => {
+      // 绑 0.0.0.0，手机在同一 Wi-Fi 下才能直连；失败再退回回环
+      const fallback = () => {
+        try {
+          server.listen(this.port, "127.0.0.1", () => resolve());
+        } catch {
+          resolve();
+        }
+      };
+      server.once("error", fallback);
+      server.listen(this.port, "0.0.0.0", () => {
+        server.removeListener("error", fallback);
+        resolve();
+      });
     });
     this.http = server;
     return { url: this.url(), token: this.token };
@@ -279,6 +290,8 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
+
 
 
 

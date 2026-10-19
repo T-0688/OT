@@ -105,7 +105,9 @@ body.light .toast { background: rgba(17,18,22,.9); }
 <script>
 const params = new URLSearchParams(location.search);
 const token = params.get('token') || '';
-const host = params.get('host') || location.host;
+let host = params.get('host') || location.host;
+// 有局域网地址就优先用它（比隧道快很多）
+try { if (window.OTNotify && window.OTNotify.lanHost) { const l = window.OTNotify.lanHost(); if (l) host = l + ':7788'; } } catch (e) {}
 const log = document.getElementById('log');
 const dot = document.getElementById('dot');
 const sub = document.getElementById('sub');
@@ -186,6 +188,8 @@ function setStatus(s) {
   dot.className = 'dot' + (s === '运行中' ? ' run' : '');
 }
 let retry = 800;
+let connectStart = 0;
+let lastConnectMs = 0;
 function cacheKey(suffix) { return 'omp.' + suffix + '.' + host; }
 function toast(text) {
   try {
@@ -226,7 +230,7 @@ function diagnose() {
   } catch (e) {}
   const msg = '通知权限：' + (can === null ? '未知（非 App 环境）' : can ? '已授权' : '未授权') +
     '\n后台服务：' + (svc ? '运行中（' + state + '）' : '未运行') +
-    '\n页面连接：' + (ws && ws.readyState === 1 ? '已连接' : '未连接') +
+    '\n页面连接：' + (ws && ws.readyState === 1 ? '已连接（' + lastConnectMs + ' ms）' : '未连接') +
     '\n\n要发送一条测试通知吗？';
   if (confirm(msg)) {
     try { window.OTNotify && window.OTNotify.testNotify && window.OTNotify.testNotify(); } catch (e) {}
@@ -256,7 +260,8 @@ function connect() {
   try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, isLocal ? 'ws' : 'wss'); } catch (e) {}
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
   try { if (window.OTNotify && window.OTNotify.canNotify && !window.OTNotify.canNotify()) { setTimeout(() => toast('请允许 OT 的通知权限，否则后台收不到提醒'), 1200); } } catch (e) {}
-  ws.onopen = () => { retry = 800; setStatus('已连接'); };
+  connectStart = Date.now();
+  ws.onopen = () => { retry = 800; lastConnectMs = Date.now() - connectStart; setStatus('已连接'); };
   ws.onclose = () => {
     setStatus('已断开');
     retry = Math.min(5000, Math.max(800, retry * 1.6));
@@ -471,6 +476,15 @@ setInterval(() => {
   }
 }, 5000);
 
+window.__otLan = (ip) => {
+  if (!ip) return;
+  const target = ip + ':7788';
+  if (host === target) return;
+  host = target;
+  setStatus('切换到局域网…');
+  try { if (ws) ws.close(); } catch (e) {}
+};
+
 window.__otResume = () => {
   if (!ws || ws.readyState > 1) { retry = 800; ensureNotifyPerm();
 connect(); }
@@ -543,6 +557,9 @@ ensureNotifyPerm();
 connect();
 </script>
 </body></html>
+
+
+
 
 
 

@@ -1034,3 +1034,17 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - **连点状态圆点 3 次**打开诊断：显示「通知权限 / 后台服务状态 / 页面连接」，可直接发一条测试通知
 - `NotifyService` 维护 `STATE` 并在连接过程更新
 - 版本 1.26.0 → 1.27.0
+
+### 69. 1.28.0：连接慢的定位与改动（2026-10-19）
+
+定位：本地 `hello` 只有 126 字节、本机 WS 建连 33ms，协议层没问题。慢在 **Cloudflare 隧道到国内的网络路径**。
+
+改动：
+- `RemoteServer` 监听地址由 `127.0.0.1` 改为 `0.0.0.0`（之前局域网/虚拟网卡根本连不进来），失败回退回环
+- WS 开启 `perMessageDeflate`（阈值 512B）
+- cloudflared 启动参数加 `--protocol http2 --edge-ip-version 4`（QUIC 在国内常被丢包，强制 HTTP/2）
+- 手机端默认不再做局域网扫描（`lan_enabled` 默认 false，代码保留）
+- 诊断框显示页面连接耗时（ms）
+- 版本 1.27.0 → 1.28.0
+
+验证：本机 `http://192.168.1.100:7788/` 返回 200（之前不可达）；cloudflared 命令行确认带 http2。

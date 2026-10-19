@@ -285,6 +285,23 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 
+    private void maybeScanLan() {
+        try {
+            SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
+            if (System.currentTimeMillis() - p.getLong("lan_ts", 0) < 10 * 60 * 1000L) return;
+            LanScan.scan(7788, (ip) -> runOnUiThread(() -> {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString("lan_host", ip)
+                        .putLong("lan_ts", System.currentTimeMillis())
+                        .apply();
+                if (web != null) {
+                    web.evaluateJavascript("window.__otLan && window.__otLan('" + ip + "')", null);
+                }
+            }));
+        } catch (Exception ignored) {
+        }
+    }
+
     public class NotifyBridge {
         @JavascriptInterface
         public void setTarget(String host, String token, String proto) {
@@ -300,6 +317,14 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean serviceRunning() {
             return NotifyService.RUNNING;
+        }
+
+        @JavascriptInterface
+        public String lanHost() {
+            SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
+            long ts = p.getLong("lan_ts", 0);
+            if (System.currentTimeMillis() - ts > 10 * 60 * 1000L) return "";
+            return p.getString("lan_host", "");
         }
 
         @JavascriptInterface
@@ -395,7 +420,12 @@ public class MainActivity extends Activity {
         if (web != null) {
             web.evaluateJavascript("window.__otResume && window.__otResume()", null);
         }
-    }}
+        if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("lan_enabled", false)) maybeScanLan();
+    }
+}
+
+
+
 
 
 

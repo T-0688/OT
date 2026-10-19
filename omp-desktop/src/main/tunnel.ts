@@ -105,12 +105,12 @@ export class Tunnel {
     if ((named || local) && opts?.hostname) this.url = `https://${opts.hostname.replace(/^https?:\/\//, "")}`;
     let args: string[];
     if (named) {
-      args = ["tunnel", "--no-autoupdate", "run", "--token", opts!.token!];
+      args = ["tunnel", "--no-autoupdate", "--protocol", "http2", "--edge-ip-version", "4", "run", "--token", opts!.token!];
     } else if (local) {
       const config = join(homedir(), ".cloudflared", "config.yml");
       args = existsSync(config)
-        ? ["tunnel", "--no-autoupdate", "--config", config, "run", opts!.name!]
-        : ["tunnel", "--no-autoupdate", "run", opts!.name!];
+        ? ["tunnel", "--no-autoupdate", "--protocol", "http2", "--edge-ip-version", "4", "--config", config, "run", opts!.name!]
+        : ["tunnel", "--no-autoupdate", "--protocol", "http2", "--edge-ip-version", "4", "run", opts!.name!];
     } else {
       args = ["tunnel", "--url", `http://127.0.0.1:${port}`, "--no-autoupdate"];
     }
@@ -165,6 +165,7 @@ export class Tunnel {
     this.notify();
   }
 }
+
 
 
 
