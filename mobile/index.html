@@ -221,6 +221,7 @@ function connect() {
     setTimeout(connect, retry);
   };
   ws.onmessage = (ev) => {
+    lastSeen = Date.now();
     const m = JSON.parse(ev.data);
     if (m.t === 'hello') {
       title.textContent = m.title || 'OT';
@@ -414,8 +415,25 @@ refreshBtn.onclick = () => {
   setTimeout(connect, 300);
 };
 setInterval(() => {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
-}, 20000);
+  if (ws && ws.readyState === 1) {
+    try { ws.send(JSON.stringify({ type: 'ping' })); } catch (e) {}
+  }
+}, 10000);
+let lastSeen = Date.now();
+setInterval(() => {
+  if (ws && ws.readyState === 1 && Date.now() - lastSeen > 35000) {
+    setStatus('重连中…');
+    try { ws.close(); } catch (e) {}
+  }
+}, 5000);
+
+window.__otResume = () => {
+  if (!ws || ws.readyState > 1) { retry = 800; connect(); }
+};
+window.addEventListener('online', () => {
+  if (!ws || ws.readyState > 1) connect();
+});
+
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && (!ws || ws.readyState > 1)) connect();
 });
@@ -466,6 +484,8 @@ try {
 connect();
 </script>
 </body></html>
+
+
 
 
 

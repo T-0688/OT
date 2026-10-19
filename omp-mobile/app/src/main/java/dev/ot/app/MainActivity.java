@@ -328,4 +328,27 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
         }
     }
-}
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try {
+            Intent svc = new Intent(this, KeepAliveService.class);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+            else startService(svc);
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            stopService(new Intent(this, KeepAliveService.class));
+        } catch (Exception ignored) {
+        }
+        if (web != null) {
+            web.evaluateJavascript("window.__otResume && window.__otResume()", null);
+        }
+    }}
+

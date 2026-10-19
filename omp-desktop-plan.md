@@ -965,3 +965,24 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 桌面通知正文同步改为「当前任务完成」
 - 手机页兜底文案同步
 - 版本 1.21.0 → 1.22.0
+
+### 64. 1.23.0：手机不断联（2026-10-19）
+
+改动分三层：
+
+**1. 连接层**
+- 心跳 20s → 10s，服务端 `ping` 回 `pong`
+- 新增看门狗：35 秒收不到任何消息就主动 close 触发重连（隧道空闲被切时能自愈）
+- 监听 `online` 事件，网络恢复立刻重连
+- 暴露 `window.__otResume`，App 回到前台立即重连（不用等 2s 退避）
+
+**2. Android 进程层**
+- 新增 `KeepAliveService` 前台服务：`onPause` 时启动、`onResume` 时停止
+- 前台服务 + `PARTIAL_WAKE_LOCK`，锁屏/后台时 WebView 的 JS 心跳仍能运行，避免系统冻结进程导致断线
+- 常驻通知「OT 保持连接中」（IMPORTANCE_LOW，不打扰）
+- `onResume` 直接调用 `window.__otResume()`
+
+**3. 体验层**
+- 断线后重连退避仍是 800ms 起；首屏有 localStorage 缓存，重连期间不白屏
+
+版本 1.22.0 → 1.23.0
