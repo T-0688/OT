@@ -1,0 +1,12 @@
+import { writeFileSync } from "node:fs";
+const list=await (await fetch(`http://127.0.0.1:9335/json/list`)).json();
+const page=list.find(t=>t.type==="page");
+const ws=new WebSocket(page.webSocketDebuggerUrl);
+let id=0;const pending=new Map();
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){pending.get(m.id)(m.result??m.error);pending.delete(m.id);}};
+await new Promise(r=>ws.onopen=r);
+const send=(m,p={})=>new Promise(res=>{const i=++id;pending.set(i,res);ws.send(JSON.stringify({id:i,method:m,params:p}));});
+const r = await send("Page.captureScreenshot",{format:"png"});
+console.log("has data:", !!r?.data, r?.data ? r.data.length : 0);
+if (r?.data) writeFileSync("shot-1.1-settings.png", Buffer.from(r.data, "base64"));
+process.exit(0);

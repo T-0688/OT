@@ -1,6 +1,6 @@
 {
   "name": "omp-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "A local desktop client for ACP coding agents (oh-my-pi / omp)",
@@ -76,6 +76,7 @@
     "electronDist": "node_modules/electron/dist"
   }
 }
+
 
 
 

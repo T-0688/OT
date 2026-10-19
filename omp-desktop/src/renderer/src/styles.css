@@ -3788,3 +3788,11 @@ body {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* 左下角图标按钮（主题切换） */
+.side-bottom .foot-btn.icon-only {
+  width: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  justify-content: center;
+}

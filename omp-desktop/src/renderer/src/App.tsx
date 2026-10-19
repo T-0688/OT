@@ -1100,7 +1100,14 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.0.0</span>
+            <span className="version">v1.1.0</span>
+            <button
+              className="foot-btn icon-only"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "切换到浅色" : "切换到深色"}
+            >
+              <Icon name={theme === "dark" ? "moon" : "sun"} size={14} />
+            </button>
             <button
               className={`foot-btn ${view === "settings" ? "on" : ""}`}
               onClick={() => setView("settings")}
@@ -1118,28 +1125,6 @@ export default function App() {
 
         <div className="topbar-title">{sessionTitle}</div>
         <div className="spacer" />
-        <select
-          className="select"
-          value={agentId}
-          onChange={(e) => void newSession(e.target.value)}
-          title="Agent（换一个就换一套后端）"
-        >
-          {detectedAgents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-              {a.version ? ` · ${a.version}` : ""}
-            </option>
-          ))}
-        </select>
-
-        <button
-          className="pill-btn icon-only"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          title="切换主题"
-        >
-          <Icon name={theme === "dark" ? "moon" : "sun"} />
-        </button>
-
       </header>
 
 
@@ -1171,6 +1156,8 @@ export default function App() {
               }}
               onOpenDataDir={() => void window.api.openDataDir()}
               onBack={() => setView("chat")}
+              currentAgent={agentId}
+              onSwitchAgent={(id) => void newSession(id)}
               onClearSessions={async () => {
                 if (!window.confirm("清空所有本地会话记录？\n（不影响 agent 自己的会话文件）")) return;
                 await window.api.clearSessions();
@@ -2108,6 +2095,8 @@ function SettingsPanel({
   onOpenDataDir,
   onClearSessions,
   onBack,
+  currentAgent,
+  onSwitchAgent,
 }: {
   settings: AppSettings | null;
   models: ConfigOption | undefined;
@@ -2120,6 +2109,8 @@ function SettingsPanel({
   onOpenDataDir: () => void;
   onClearSessions: () => void;
   onBack: () => void;
+  currentAgent: string;
+  onSwitchAgent: (id: string) => void;
 }) {
   const [version, setVersion] = useState("");
   const [remote, setRemote] = useState<RemoteStatus>({
@@ -2184,6 +2175,19 @@ function SettingsPanel({
                 {o.name}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="set-row">
+          <label>当前 Agent</label>
+          <select value={currentAgent} onChange={(e) => onSwitchAgent(e.target.value)}>
+            {agents
+              .filter((a) => a.detected)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.version ? ` · ${a.version}` : ""}
+                </option>
+              ))}
           </select>
         </div>
         <div className="set-row">
@@ -2447,6 +2451,9 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
 
 
 

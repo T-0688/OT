@@ -735,3 +735,10 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - **数据目录保持不变**：`app.setPath("userData", appData/omp-desktop)`，所以会话、设置、隧道 token、checkpoints 全部沿用，没丢
 - GitHub 仓库改名为 `T-Kepler/ot`，release 资产替换为 OT 版
 - 目录名（omp-desktop/omp-mobile）保留，避免破坏构建路径
+
+### 42. 1.1.0：Agent 选择收进设置、主题按钮下移（2026-10-19）
+
+- 顶栏不再放 Agent 下拉，只留会话标题
+- 设置 → 模型与 Agent 新增「当前 Agent」，切换即换后端（等价于新开会话）
+- 主题切换从顶栏移到左下角，紧挨「设置」：`[v1.1.0] [🌙] [⚙ 设置]`
+- 版本策略：每轮对话 +0.1，本轮 1.0.0 → 1.1.0
