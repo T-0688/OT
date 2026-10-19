@@ -818,3 +818,18 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 写入后再发 note 告知条数，用户可再次点上传
 
 **验证**：临时仓库含 `.env`、`server.key` → 上传被拦截 → 点按钮 → `.gitignore` 得到 `.env*` 和 `*.key`（added=2）。
+
+### 49. 1.8.0：全量改名为 OT（2026-10-19）
+
+改的：
+
+- `package.json` name → `ot`，appId → `com.local.ot`，安装目录 `%LOCALAPPDATA%\Programs\OT`，进程 `OT.exe`
+- 应用标识 `app.setAppUserModelId("com.local.ot")`
+- 数据目录 → `%APPDATA%\ot`，启动时从旧的 `omp-desktop` 迁移 `settings.json / sessions / checkpoints / bin`（逐项拷贝，避开 Chromium 占用的锁文件）
+- Android：`applicationId / namespace` → `dev.ot.app`，Java 包目录同步迁移，label OT
+- 旧 `OT 1.7.0` 卸载项已从注册表清理，只留 1.8.0
+- 版本 1.7.0 → 1.8.0
+
+没改（规避破坏）：
+
+- 仓库里的目录名 `omp-desktop/`、`omp-mobile/`：被系统进程占用无法重命名，且会打断所有构建路径；对外可见的名字已经全是 OT

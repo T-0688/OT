@@ -1,15 +1,15 @@
 apply plugin: "com.android.application"
 
 android {
-    namespace "dev.omp.mobile"
+    namespace "dev.ot.app"
     compileSdk 33
 
     defaultConfig {
-        applicationId "dev.omp.mobile"
+        applicationId "dev.ot.app"
         minSdk 24
         targetSdk 33
-        versionCode 170
-        versionName "1.7.0"
+        versionCode 180
+        versionName "1.8.0"
     }
 
     buildTypes {
@@ -21,6 +21,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
 
 
 

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, Notification, protocol, shell } from "electron";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { execFile, execFileSync } from "node:child_process";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -574,8 +574,23 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId("com.local.ompdesktop");
-    app.setPath("userData", join(app.getPath("appData"), "omp-desktop"));
+    app.setAppUserModelId("com.local.ot");
+    // 数据目录统一为 OT；把旧的 omp-desktop 内容合并进来（只补不删）
+    const dataDir = join(app.getPath("appData"), "OT");
+    const legacyDir = join(app.getPath("appData"), "omp-desktop");
+    if (existsSync(legacyDir)) {
+      // 只迁移我们自己的数据，避免碰到 Chromium 正在占用的缓存/锁文件
+      for (const item of ["settings.json", "sessions", "checkpoints", "bin"]) {
+        const from = join(legacyDir, item);
+        if (!existsSync(from)) continue;
+        try {
+          cpSync(from, join(dataDir, item), { recursive: true, force: true });
+        } catch {
+          /* 单项失败不影响其它 */
+        }
+      }
+    }
+    app.setPath("userData", dataDir);
     Menu.setApplicationMenu(null);
 
     settings = new SettingsStore(join(app.getPath("userData"), "settings.json"));
@@ -1005,6 +1020,9 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
+
 
 
 

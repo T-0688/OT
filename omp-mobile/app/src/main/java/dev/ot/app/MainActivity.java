@@ -1,4 +1,4 @@
-package dev.omp.mobile;
+package dev.ot.app;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -273,6 +273,7 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 }
+
 
 
 
