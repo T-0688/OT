@@ -1,0 +1,16 @@
+const PORT="9336";
+const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+const list=await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page=list.find(t=>t.type==="page");
+const ws=new WebSocket(page.webSocketDebuggerUrl);
+let id=0;const pending=new Map();
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){pending.get(m.id)(m.result??m.error);pending.delete(m.id);}};
+await new Promise(r=>ws.onopen=r);
+const send=(m,p={})=>new Promise(res=>{const i=++id;pending.set(i,res);ws.send(JSON.stringify({id:i,method:m,params:p}));});
+const ev=async e=>(await send("Runtime.evaluate",{expression:e,returnByValue:true,awaitPromise:true}))?.result?.value;
+const approve = async () => { for (let i=0;i<3;i++){ const c = await ev(`(() => { const b=[...document.querySelectorAll('.modal-actions .btn')].find(x=>/allow/i.test(x.textContent)); if(b){b.click(); return 1;} return 0; })()`); if(!c) break; await wait(4000);} };
+await wait(1500);
+await ev(`window.api.prompt('把 scratch-demo.ts 里的 VERSION 改成 3，只回 done')`);
+await wait(14000); await approve(); await wait(3000);
+console.log("turn =", await ev(`JSON.stringify({turns: document.querySelectorAll('.turn-meta').length, users: document.querySelectorAll('.msg.user').length})`));
+process.exit(0);

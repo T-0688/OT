@@ -1,0 +1,28 @@
+# 只发布 OMP 相关目录，其余（dsh-ref、其他项目、构建产物）全部忽略
+/*
+!/omp-desktop/
+!/omp-mobile/
+!/mobile/
+!/README.md
+!/omp-desktop-plan.md
+!/.gitignore
+
+# 依赖与构建产物
+node_modules/
+omp-desktop/node_modules/
+omp-desktop/out/
+omp-desktop/release/
+omp-mobile/.gradle/
+omp-mobile/build/
+omp-mobile/app/build/
+omp-mobile/local.properties
+*.log
+
+# 截图、临时文件
+omp-desktop/shot-*.png
+omp-desktop/*.log
+omp-desktop/dsh-*.txt
+omp-desktop/dsh-css-window.txt
+omp-desktop/dsh-theme-extract.css
+omp-desktop/dsh-theme-rule.css
+omp-desktop/dsh-theme-rules.css

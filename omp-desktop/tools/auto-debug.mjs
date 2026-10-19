@@ -1,0 +1,12 @@
+const PORT = "9336";
+const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page = list.find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result ?? m.error); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (m, p = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const ev = async (e) => (await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }))?.result?.value;
+console.log("direct save =", await ev(`window.api.saveAutomation({name:'直接写入', prompt:'只回复 OK', cwd:'D:/.Daily/DeepSeek Harness/omp-desktop', agentId:'omp', enabled:true, schedule:{type:'interval', minutes:30}}).then(r=>JSON.stringify(r)).catch(e=>'ERR:'+e.message)`));
+console.log("list =", await ev(`window.api.automations().then(r=>JSON.stringify(r)).catch(e=>'ERR:'+e.message)`));
+ws.close(); process.exit(0);

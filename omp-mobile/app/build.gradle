@@ -1,0 +1,24 @@
+apply plugin: "com.android.application"
+
+android {
+    namespace "dev.omp.mobile"
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "dev.omp.mobile"
+        minSdk 24
+        targetSdk 33
+        versionCode 100
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+

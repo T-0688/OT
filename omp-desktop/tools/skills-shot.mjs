@@ -1,0 +1,16 @@
+import { writeFileSync } from "node:fs";
+const PORT="9336";
+const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+const list=await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page=list.find(t=>t.type==="page");
+const ws=new WebSocket(page.webSocketDebuggerUrl);
+let id=0;const pending=new Map();
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){pending.get(m.id)(m.result??m.error);pending.delete(m.id);}};
+await new Promise(r=>ws.onopen=r);
+const send=(m,p={})=>new Promise(res=>{const i=++id;pending.set(i,res);ws.send(JSON.stringify({id:i,method:m,params:p}));});
+const race=(p,ms)=>Promise.race([p,new Promise(r=>setTimeout(()=>r(null),ms))]);
+await race(send("Runtime.evaluate",{expression:`document.querySelectorAll('.skill-row')[0]?.scrollIntoView()`}),4000);
+await wait(600);
+const shot=await race(send("Page.captureScreenshot",{format:"png"}),15000);
+if(shot?.data){writeFileSync("shot-skills.png",Buffer.from(shot.data,"base64"));console.log("saved");}
+process.exit(0);

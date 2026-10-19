@@ -1,0 +1,12 @@
+const list = await (await fetch("http://127.0.0.1:9333/json/list")).json();
+const page = list.find(t => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result ?? m.error); pending.delete(m.id); } };
+await new Promise(r => ws.onopen = r);
+const send = (method, params={}) => new Promise(res => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({id:i, method, params})); });
+const r = await send("Runtime.evaluate", { expression: `JSON.stringify([...document.querySelectorAll('.topbar select')].map(s => ({title: s.title, options: s.options.length, value: s.value})))`, returnByValue: true });
+console.log(r.result.value);
+const err = await send("Runtime.evaluate", { expression: `window.__err ?? "none"`, returnByValue: true });
+console.log("err:", err.result.value);
+ws.close(); process.exit(0);

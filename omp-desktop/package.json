@@ -1,0 +1,81 @@
+{
+  "name": "omp-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A local desktop client for ACP coding agents (oh-my-pi / omp)",
+  "author": "OMP Desktop",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "node tools/gen-mobile-page.mjs && electron-vite build",
+    "start": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder --win",
+    "dist:dir": "electron-vite build && electron-builder --win --dir",
+    "probe": "node probe.mjs"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.9.0",
+    "fzstd": "^0.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@electron/asar": "^4.3.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^6.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "build": {
+    "appId": "com.local.ompdesktop",
+    "productName": "OMP Desktop",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "build/icon.png",
+      "build/icon-192.png",
+      "build/icon-512.png"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OMP Desktop",
+      "artifactName": "OMP-Desktop-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "electronDist": "node_modules/electron/dist"
+  }
+}
+
+
+

@@ -1,0 +1,11 @@
+import { readFileSync, writeFileSync } from "node:fs";
+const asar = "D:\\Users\\Kepler\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\app.asar";
+const text = readFileSync(asar).toString("utf8");
+const center = text.indexOf("--dsw-alias-bg-layer-1:");
+const chunk = text.slice(Math.max(0, center - 120_000), center + 700_000);
+writeFileSync("dsh-css-window.txt", chunk);
+const defs = [...chunk.matchAll(/--dsw-[a-z0-9-]+\s*:/g)].map((m) => m[0]);
+console.log("defs:", defs.length, "alias:", defs.filter((d) => d.startsWith("--dsw-alias-")).length);
+const rootIdx = chunk.indexOf(":root");
+console.log("center offset in chunk:", center - Math.max(0, center - 120_000), "root idx:", rootIdx);
+console.log("head:", chunk.slice(0, 240).replace(/\n/g, " "));

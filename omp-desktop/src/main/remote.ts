@@ -1,0 +1,260 @@
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { app } from "electron";
+import { randomBytes } from "node:crypto";
+import { WebSocketServer, type WebSocket } from "ws";
+import type { AgentEvent } from "../shared/types.js";
+
+export type RemoteHooks = {
+  sessions: () => { id: string; title: string; cwd: string; updatedAt?: string }[];
+  open: (id: string) => Promise<{ ok: boolean; title?: string; error?: string }>;
+  prompt: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  permission: (id: string, optionId: string) => void;
+  cancel: () => void;
+  snapshot: () => { id: string; title: string; cwd: string; status: string; agent: string; model: string };
+  history: (id: string) => AgentEvent[];
+};
+
+type ChatLine = { role: "user" | "agent" | "tool" | "note"; text: string };
+
+import PAGE from "./mobile-page.js";
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+
+export class RemoteServer {
+  private http: Server | null = null;
+  private wss: WebSocketServer | null = null;
+  private history: ChatLine[] = [];
+  private clients = new Set<WebSocket>();
+  status = "idle";
+  currentId = "";
+  readonly token: string;
+
+  constructor(
+    private port: number,
+    private hooks: RemoteHooks,
+    token?: string,
+  ) {
+    this.token = token && token.length > 0 ? token : randomBytes(12).toString("hex");
+  }
+
+  get running(): boolean {
+    return this.http !== null;
+  }
+
+  private push(line: ChatLine): void {
+    this.history.push(line);
+    if (this.history.length > 300) this.history.splice(0, this.history.length - 300);
+  }
+
+  broadcast(payload: unknown): void {
+    const data = JSON.stringify(payload);
+    for (const client of this.clients) {
+      if (client.readyState === 1) client.send(data);
+    }
+  }
+
+  /** 把桌面侧的事件转成手机能看的内容 */
+  ingest(event: AgentEvent): void {
+    switch (event.t) {
+      case "user": {
+        const line = { role: "user" as const, text: event.text };
+        this.push(line);
+        this.broadcast({ t: "user", text: line.text });
+        break;
+      }
+      case "text": {
+        const last = this.history[this.history.length - 1];
+        if (last && last.role === "agent") last.text += event.text;
+        else this.push({ role: "agent", text: event.text });
+        this.broadcast({ t: "text", text: event.text });
+        break;
+      }
+      case "tool_start":
+      case "tool_update": {
+        const title = String((event as { title?: string }).title ?? "");
+        if (title && event.t === "tool_start") {
+          this.push({ role: "tool", text: title });
+          this.broadcast({ t: "tool", title });
+        }
+        break;
+      }
+      case "permission":
+        this.broadcast({
+          t: "permission",
+          id: event.id,
+          title: event.title,
+          options: event.options,
+        });
+        break;
+      case "turn_end":
+        this.broadcast({ t: "turn_end" });
+        this.status = "idle";
+        break;
+      case "ready":
+        this.history = [];
+        this.status = "idle";
+        this.currentId = event.sessionId;
+        break;
+      case "error":
+        this.broadcast({ t: "note", text: `出错了：${event.message}` });
+        break;
+    }
+  }
+
+  async start(): Promise<{ url: string; token: string }> {
+    if (this.http) return { url: this.url(), token: this.token };
+    const server = createServer((req, res) => this.handleHttp(req, res));
+    this.wss = new WebSocketServer({ server, path: "/ws" });
+    this.wss.on("connection", (socket, req) => this.handleWs(socket, req));
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(this.port, "127.0.0.1", () => resolve());
+    });
+    this.http = server;
+    return { url: this.url(), token: this.token };
+  }
+
+  async stop(): Promise<void> {
+    for (const client of this.clients) client.close();
+    this.clients.clear();
+    this.wss?.close();
+    this.wss = null;
+    const server = this.http;
+    this.http = null;
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  private url(): string {
+    return `http://127.0.0.1:${this.port}/?token=${this.token}`;
+  }
+
+  private handleHttp(req: IncomingMessage, res: ServerResponse): void {
+    const parsed = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (parsed.pathname === "/manifest.webmanifest") {
+      res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "no-store" });
+      res.end(
+        JSON.stringify({
+          name: "OMP Desktop",
+          short_name: "OMP",
+          start_url: `/?token=${this.token}`,
+          scope: "/",
+          display: "standalone",
+          background_color: "#151517",
+          theme_color: "#151517",
+          icons: [
+            { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          ],
+        }),
+      );
+      return;
+    }
+    if (parsed.pathname === "/icon-192.png" || parsed.pathname === "/icon-512.png") {
+      const file = parsed.pathname === "/icon-192.png" ? "icon-192.png" : "icon-512.png";
+      try {
+        const buf = readFileSync(join(app.getAppPath(), "build", file));
+        res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
+        res.end(buf);
+      } catch {
+        res.writeHead(404);
+        res.end();
+      }
+      return;
+    }
+    if (parsed.pathname === "/api/sessions") {
+      if (parsed.searchParams.get("token") !== this.token) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*" });
+      res.end(JSON.stringify({ sessions: this.hooks.sessions(), current: this.hooks.snapshot().title ? this.currentId : null }));
+      return;
+    }
+    if (parsed.pathname === "/health") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (parsed.searchParams.get("token") !== this.token) {
+      res.writeHead(401, { "content-type": "text/plain; charset=utf-8" });
+      res.end("unauthorized");
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(PAGE);
+  }
+
+  private handleWs(socket: WebSocket, req: IncomingMessage): void {
+    const parsed = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (parsed.searchParams.get("token") !== this.token) {
+      socket.close();
+      return;
+    }
+    this.clients.add(socket);
+    const snap = this.hooks.snapshot();
+    socket.send(
+      JSON.stringify({
+        t: "hello",
+        id: this.currentId,
+        title: snap.title,
+        cwd: snap.cwd,
+        status: this.status === "running" ? "running" : "idle",
+        history: this.history,
+      }),
+    );
+    socket.on("close", () => this.clients.delete(socket));
+    socket.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw)) as { type?: string; text?: string; id?: string; optionId?: string };
+        if (msg.type === "prompt" && msg.text) void this.hooks.prompt(msg.text);
+        if (msg.type === "permission" && msg.id && msg.optionId) this.hooks.permission(msg.id, msg.optionId);
+        if (msg.type === "cancel") this.hooks.cancel();
+        if (msg.type === "sessions") {
+          socket.send(JSON.stringify({ t: "sessions", list: this.hooks.sessions(), current: this.currentId }));
+        }
+        if (msg.type === "open" && msg.id) {
+          this.history = [];
+          this.broadcast({ t: "reset" });
+          void this.hooks.open(msg.id).then((r) => {
+            if (r.ok) {
+              this.currentId = msg.id!;
+              this.history = [];
+              for (const ev of this.hooks.history(msg.id)) {
+                if (ev.t === "user") this.history.push({ role: "user", text: ev.text });
+                else if (ev.t === "text") {
+                  const last = this.history[this.history.length - 1];
+                  if (last && last.role === "agent") last.text += ev.text;
+                  else this.history.push({ role: "agent", text: ev.text });
+                } else if (ev.t === "tool_start" || ev.t === "tool_update") {
+                  const title = String((ev as { title?: string }).title ?? "");
+                  if (title && ev.t === "tool_start") this.history.push({ role: "tool", text: title });
+                }
+              }
+              this.broadcast({ t: "hello", id: msg.id, title: r.title ?? "", cwd: "", status: "idle", history: this.history });
+            } else {
+              this.broadcast({ t: "note", text: r.error ?? "切换失败" });
+            }
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+}
+
+export function remotePageSize(): number {
+  return esc(PAGE).length;
+}
+
+
+
+
+
+
+
+
+

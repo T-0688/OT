@@ -1,0 +1,197 @@
+        <div
+          className="composer"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            const dropped = Array.from(e.dataTransfer.files);
+            const images = dropped.filter((f) => f.type.startsWith("image/"));
+            if (images.length) {
+              e.preventDefault();
+              void addImages(images);
+            }
+          }}
+        >
+          {attachments.length || files.length ? (
+            <div className="attachments">
+              {attachments.map((a, i) => (
+                <div className="attachment" key={`img-${i}`}>
+                  <img src={`data:${a.mimeType};base64,${a.data}`} alt={a.name ?? "image"} />
+                  <button onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== i))} title="移除">
+                    ×
+                  </button>
+                </div>
+              ))}
+              {files.map((f, i) => (
+                <div className="file-chip" key={`f-${i}`} title={f}>
+                  <span className="file-name">{f.split(/[\\/]/).pop()}</span>
+                  <button onClick={() => setFiles((prev) => prev.filter((_, k) => k !== i))} title="移除">
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <textarea
+            className="composer-input"
+            value={draft}
+            placeholder={status === "ready" ? "发消息或创建任务，/ 调用指令，@ 文件或对话" : "等待会话就绪…"}
+            onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+              if (!pasted.length) return;
+              e.preventDefault();
+              void addImages(pasted);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            rows={1}
+            disabled={!sessionId}
+          />
+
+          <div className="composer-toolbar">
+            <div className="ct-left">
+              <div className="plus-wrap">
+                <button className="icon-btn" onClick={() => setPlusOpen((v) => !v)} title="更多" aria-label="更多">
+                  <Icon name="plus" size={16} />
+                </button>
+                {plusOpen ? (
+                  <>
+                    <div className="plus-backdrop" onClick={() => setPlusOpen(false)} />
+                    <div className="plus-menu">
+                      <button
+                        onClick={async () => {
+                          setPlusOpen(false);
+                          const picked = await window.api.pickFiles();
+                          if (picked.length) setFiles((prev) => [...prev, ...picked].slice(0, 12));
+                        }}
+                      >
+                        <Icon name="folder" size={14} />
+                        上传文件…
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setPlusOpen(false);
+                          const picked = await window.api.pickImage();
+                          if (picked) {
+                            const comma = picked.dataUrl.indexOf(",");
+                            setAttachments((prev) =>
+                              [
+                                ...prev,
+                                {
+                                  data: picked.dataUrl.slice(comma + 1),
+                                  mimeType: picked.dataUrl.slice(5, picked.dataUrl.indexOf(";")),
+                                  name: picked.path.split(/[\\/]/).pop() ?? "image",
+                                },
+                              ].slice(0, 6),
+                            );
+                          }
+                        }}
+                      >
+                        <Icon name="image" size={14} />
+                        上传图片…
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPlusOpen(false);
+                          void changeDir();
+                        }}
+                      >
+                        <Icon name="folder" size={14} />
+                        切换工作目录…
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPlusOpen(false);
+                          setView("skills");
+                        }}
+                      >
+                        <Icon name="sparkle" size={14} />
+                        技能
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPlusOpen(false);
+                          setPaletteOpen(true);
+                        }}
+                      >
+                        <Icon name="command" size={14} />
+                        命令面板
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPlusOpen(false);
+                          setShowLogs((v) => !v);
+                        }}
+                      >
+                        <Icon name="terminal" size={14} />
+                        日志
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              <Select
+                className="perm"
+                icon={<Icon name="shield" size={13} />}
+                value={approval}
+                options={[
+                  { value: "ask", name: "询问权限" },
+                  { value: "auto", name: "完全权限" },
+                ]}
+                onChange={(mode) => {
+                  setApproval(mode as "ask" | "auto");
+                  void window.api.setApprovalMode(mode as "ask" | "auto");
+                }}
+                title="工具调用权限"
+              />
+            </div>
+
+            <div className="ct-right">
+              {models?.options?.length ? (
+                <Select
+                  className="model"
+                  value={String(models.currentValue ?? "")}
+                  options={models.options}
+                  onChange={(v) => void setConfig(models.id, v)}
+                  title="模型"
+                />
+              ) : null}
+              {usage.used ? (
+                <span className="ctx-pill" title={`上下文 ${usage.used} / ${usage.size ?? "?"}`}>
+                  {fmtTokens(usage.used)}
+                </span>
+              ) : null}
+              {thinking?.options?.length ? (
+                <Select
+                  className="think"
+                  value={String(thinking.currentValue ?? "")}
+                  options={thinking.options}
+                  onChange={(v) => void setConfig(thinking.id, v)}
+                  title="速率 / 思考档位"
+                />
+              ) : null}
+              {running ? (
+                <button className="send-icon stop" onClick={() => void stop()} title="停止">
+                  <Icon name="stop" size={14} />
+                </button>
+              ) : (
+                <button
+                  className="send-icon"
+                  onClick={() => void send()}
+                  disabled={(!draft.trim() && attachments.length === 0 && files.length === 0) || !sessionId}
+                  title="发送"
+                >
+                  <Icon name="arrow-up" size={15} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
