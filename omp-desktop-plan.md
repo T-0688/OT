@@ -1135,3 +1135,16 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.31.0 → 1.31.1（APK 本次不构建）
 
 **验证**：7788/7789 同时监听；桌面 WS 切到「网站」会话后，微信实例仍为 `D:\.Daily\ot-wechat`；`bridge.mjs ask "pwd"` 走 7789 返回 `D:/.Daily/ot-wechat`。
+
+### 76. ai-memory 长期记忆接入（2026-10-19）
+
+- 安装：`install.ps1`（GitHub 直连 TLS 被拦，用 `AI_MEMORY_RELEASE_BASE_URL=https://gh-proxy.com/https://github.com/akitaonrails/ai-memory/releases` 走镜像），装到 `%LOCALAPPDATA%\Programs\ai-memory`，版本 3.1.1
+- 接线：`ai-memory setup --agent omp --yes`
+  - `~/.omp/agent/mcp.json` 增加 stdio MCP：`ai-memory mcp-bridge --server-url http://127.0.0.1:49374/mcp`
+  - `~/.omp/agent/extensions/ai-memory-omp.ts` 生命周期扩展
+  - 全局技能 `~/.agents/skills/ai-memory-*`（6 个：retrieval / handoff / durable-pages / learning-maintenance / messaging / routing-install）
+  - 自启：HKCU Run `ai-memory ... service-host`
+  - 数据目录 `%LOCALAPPDATA%\ai-memory`（wiki 为 git-backed markdown + SQLite 索引）
+- 验证：通过 OT 的桥接发问「调用 ai-memory 的工具查一下记得什么」，agent 成功调用 MCP 工具并读回统计（当时 2 会话 / 45 条观测，0 页面）
+- 桌面实例与微信实例共用同一份 omp 配置，因此共享同一记忆库
+- 注意：新装是空的，需要几轮会话才会积累出 wiki 页面与 handoff
