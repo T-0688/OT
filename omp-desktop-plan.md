@@ -862,3 +862,12 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 桌面状态栏余额按币种显示：CNY → `¥6.72`，USD → `$x.xx`
 - 验证 DeepSeek 密钥：`GET https://api.deepseek.com/models` 返回且仅返回 `deepseek-flash`（DeepSeek-V4.1-Flash）与 `deepseek-v4-pro`，`owned_by: deepseek`；余额 `CNY 6.72` → 确认是官方密钥，当前模型是 deepseek-flash
 - 版本 1.11.0 → 1.12.0
+
+### 54. 1.13.0：模型列表按官方 /models 过滤（2026-10-19）
+
+- 新增 IPC `models:deepseek`：用设置的 Key 调 `https://api.deepseek.com/models`
+- 设置 → 模型与 Agent 增加「只显示官方可用模型」开关（默认开）；开启后 `deepseek/` 前缀的选项只保留 /models 返回的 id，第三方 provider 不受影响
+- 解决了下拉里出现 `DeepSeek V4 Flash`、`DeepSeek V4 Flash Vision Exp` 两个账号未开通型号的问题（omp 内置目录比官方 API 多）
+- 版本 1.12.0 → 1.13.0
+
+**验证**：过滤后 deepseek 只剩 `DeepSeek V4.1 Flash` 与 `DeepSeek V4 Pro`，第三方（GPT-6、GLM、kimi、aliyun 的 deepseek 副本）照常显示。

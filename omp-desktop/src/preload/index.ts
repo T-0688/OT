@@ -33,6 +33,7 @@ const api: RendererApi = {
   readFile: (path: string) => ipcRenderer.invoke("fs:read", path),
   addCustomModel: (input: unknown) => ipcRenderer.invoke("models:addCustom", input),
   getBalance: () => ipcRenderer.invoke("balance:get"),
+  deepseekModels: () => ipcRenderer.invoke("models:deepseek"),
   uploadNow: () => ipcRenderer.invoke("github:uploadNow"),
   fixGitignore: () => ipcRenderer.invoke("github:fixGitignore"),
   remoteStatus: () => ipcRenderer.invoke("remote:status"),
@@ -63,6 +64,7 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
 
 
 

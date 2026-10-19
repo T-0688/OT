@@ -138,6 +138,7 @@ export type AppSettings = {
   deepseekApiKey: string;
   githubAutoUpload: boolean;
   githubBlockSecrets: boolean;
+  officialModelsOnly: boolean;
   customModels: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }[];
   tunnelToken: string;
   tunnelHostname: string;
@@ -190,6 +191,7 @@ export type RendererApi = {
   remoteTunnel(on: boolean): Promise<RemoteStatus>;
   addCustomModel(input: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }): Promise<{ ok: boolean; error?: string }>;
   getBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }>;
+  deepseekModels(): Promise<{ ok: boolean; ids: string[]; error?: string }>;
   uploadNow(): Promise<{ ok: boolean; error?: string }>;
   fixGitignore(): Promise<{ ok: boolean; added: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
@@ -199,6 +201,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

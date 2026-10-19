@@ -861,6 +861,21 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     ipcMain.handle("balance:get", () => fetchBalance());
+
+    ipcMain.handle("models:deepseek", async () => {
+      const key = settings?.get().deepseekApiKey?.trim();
+      if (!key) return { ok: false, ids: [] as string[], error: "未配置 Key" };
+      try {
+        const res = await fetch("https://api.deepseek.com/models", {
+          headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+        });
+        if (!res.ok) return { ok: false, ids: [] as string[], error: `HTTP ${res.status}` };
+        const data: any = await res.json();
+        return { ok: true, ids: (data?.data ?? []).map((m: any) => String(m.id)) };
+      } catch (err: any) {
+        return { ok: false, ids: [] as string[], error: String(err?.message ?? err) };
+      }
+    });
     ipcMain.handle("github:fixGitignore", () => {
       const res = fixGitignore(sessionCwd);
       if (res.ok) {
@@ -1020,6 +1035,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 

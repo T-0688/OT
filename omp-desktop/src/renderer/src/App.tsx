@@ -203,6 +203,7 @@ export default function App() {
   const snapshotted = useRef<Set<string>>(new Set());
   const [phoneOnline, setPhoneOnline] = useState(false);
   const [balance, setBalance] = useState<{ total?: number; currency?: string }>({});
+  const [officialModels, setOfficialModels] = useState<string[] | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number; cwd: string; name: string; pinned: boolean } | null>(null);
@@ -377,6 +378,16 @@ export default function App() {
     root.style.setProperty("--bg-shade", String(appSettings?.bgShade ?? 0.55));
     root.style.setProperty("--bg-blur", `${appSettings?.bgBlur ?? 12}px`);
   }, [appSettings?.bgShade, appSettings?.bgBlur]);
+  useEffect(() => {
+    if (!appSettings?.deepseekApiKey?.trim() || !appSettings?.officialModelsOnly) {
+      setOfficialModels(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      void window.api.deepseekModels().then((r) => setOfficialModels(r.ok && r.ids.length ? r.ids : null)).catch(() => setOfficialModels(null));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [appSettings?.deepseekApiKey, appSettings?.officialModelsOnly]);
   useEffect(() => {
     const load = () => {
       void window.api
@@ -691,6 +702,16 @@ export default function App() {
       snapshotted.current.clear();
     }
   }, [items]);
+  const modelOptions = useMemo(() => {
+    const all = models?.options ?? [];
+    if (!officialModels || !officialModels.length) return all;
+    const current = String(models?.currentValue ?? "");
+    return all.filter((o) => {
+      if (!o.value.startsWith("deepseek/")) return true;
+      const id = o.value.slice("deepseek/".length);
+      return officialModels.includes(id) || o.value === current;
+    });
+  }, [models?.options, models?.currentValue, officialModels]);
   const turnCount = useMemo(() => items.filter((i) => i.kind === "turn").length + (running ? 1 : 0), [items, running]);
   const ctxPct = usage.size ? Math.min(100, ((usage.used ?? 0) / usage.size) * 100) : 0;
   const isOffPeak = useMemo(() => {
@@ -1182,7 +1203,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.12.0</span>
+            <span className="version">v1.13.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1492,7 +1513,7 @@ export default function App() {
                 <Select
                   className="model"
                   value={String(models.currentValue ?? "")}
-                  options={models.options}
+                  options={modelOptions}
                   onChange={(v) => void setConfig(models.id, v)}
                   title="模型"
                 />
@@ -2381,6 +2402,18 @@ function SettingsPanel({
       <section className="set-group" data-cat="models">
         <h3>模型与 Agent</h3>
         <div className="set-row">
+          <label>只显示官方可用模型</label>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.officialModelsOnly}
+              onChange={(e) => onChange({ officialModelsOnly: e.target.checked })}
+            />
+            <span>{settings.officialModelsOnly ? "开启" : "关闭"}</span>
+          </label>
+        </div>
+        <div className="set-hint">开启后，`deepseek/` 的模型会用你的 API Key 调 `/models` 校验，没开通的型号不再显示（第三方 provider 不受影响）。</div>
+        <div className="set-row">
           <label>默认模型</label>
           {models?.options?.length ? (
             <select value={modelValue} onChange={(e) => onChange({ defaultModel: e.target.value })}>
@@ -2949,6 +2982,10 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 
