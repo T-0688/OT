@@ -572,7 +572,9 @@ function resolveInitialCwd(): string {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.setName("OT");
+
+app.on("second-instance", () => {
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.show();
@@ -1041,6 +1043,8 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
+
 
 
 

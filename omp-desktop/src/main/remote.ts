@@ -137,8 +137,8 @@ export class RemoteServer {
       res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "no-store" });
       res.end(
         JSON.stringify({
-          name: "OMP Desktop",
-          short_name: "OMP",
+          name: "OT",
+          short_name: "OT",
           start_url: `/?token=${this.token}`,
           scope: "/",
           display: "standalone",
@@ -269,6 +269,7 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
 
 
 

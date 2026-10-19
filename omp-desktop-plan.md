@@ -891,3 +891,12 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.14.0 → 1.15.0
 
 **验证**：重启后自动打开上次会话（第 1 轮 / 12.6k tok 回填）；运行中徽标显示「OT Thinking… 4 秒」。
+
+### 57. 1.16.0：通知名称、PWA 名称清理（2026-10-19）
+
+- `app.setName("OT")` 移到 whenReady 之前（影响通知/系统显示名）
+- 删除遗留快捷方式 `OMP Desktop.lnk`（开始菜单 + 桌面），只保留 `OT.lnk`
+- remote 页面 manifest 的 `name/short_name` 由 OMP Desktop/OMP 改为 OT
+- 确认安装后的 `OT.exe` 的 FileDescription / ProductName 均为 OT，版本 1.16.0
+- 旧的「OMP Desktop」通知属于历史记录/旧快捷方式注册；新通知标题来自代码里的 `title: "OT"`
+- 版本 1.15.0 → 1.16.0
