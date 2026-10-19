@@ -1096,3 +1096,11 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.28.0 → 1.29.0
 
 **验证**：`node bridge.mjs ask "用 pwd 看一下当前目录"` → `{"text":"D:\\.Daily\\网站","label":"【网站】"}`，工具直接执行，无权限弹窗。
+
+### 73. 微信桥接彻底搬到 Daily（2026-10-19）
+
+- 删除残留的 `omp-desktop/../wechat-bridge/node_modules`（`git rm` 不动未跟踪文件，之前漏了）
+- 数据目录从 `%APPDATA%\ot-wechat` 迁到 `D:\.Daily\ot-wechat\data`（account.json / seen.json / qr.png / bridge.log），旧目录已删除
+- `bridge.mjs` 的 `DATA_DIR` 改为脚本所在目录下的 `data/`，可用 `OT_WECHAT_DATA` 覆盖
+- README 路径同步；开机自启 VBS 指向 `D:\.Daily\ot-wechat\run-loop.cmd`
+- 验证：`node bridge.mjs ask "只回复 OK"` → `{"text":"OK","label":"【网站】"}`；绑定信息完整保留
