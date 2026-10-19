@@ -66,7 +66,7 @@ function emit(event: AgentEvent): void {
     notifyTurnDone();
     if (currentSessionId) {
       const meta = store?.get(currentSessionId);
-      remote?.notify(`OT · ${meta?.title ?? "任务完成"}`, "这一轮跑完了", currentSessionId);
+      remote?.notify("OT", "当前任务完成", currentSessionId);
       const u = event.usage;
       const tok = (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
       store?.addTurnStats(currentSessionId, tok, lastUsageCost, lastUsageUsed, lastUsageSize);
@@ -98,7 +98,7 @@ function notifyTurnDone(): void {
   if (!Notification.isSupported()) return;
   const note = new Notification({
     title: "OT",
-    body: "这一轮跑完了",
+    body: "当前任务完成",
     silent: false,
   });
   note.on("click", () => {
@@ -1201,6 +1201,7 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
 
 
 

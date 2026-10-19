@@ -251,7 +251,7 @@ function connect() {
       setStatus(m.text);
     } else if (m.t === 'notify') {
       const ntitle = m.title || 'OT';
-      const nbody = m.body || '任务完成';
+      const nbody = m.body || '当前任务完成';
       if (document.hidden) showLocalNotification(ntitle, nbody);
       else toast(nbody);
     } else if (m.t === 'turn_end') {
@@ -466,5 +466,6 @@ try {
 connect();
 </script>
 </body></html>
+
 
 
