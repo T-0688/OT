@@ -1182,7 +1182,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.9.0</span>
+            <span className="version">v1.10.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2327,6 +2327,7 @@ function SettingsPanel({
   const [cmId, setCmId] = useState("");
   const [cmKey, setCmKey] = useState("");
   const [cmMsg, setCmMsg] = useState("");
+  const [setTab, setSetTab] = useState<"general" | "models" | "balance" | "mobile" | "github" | "data">("general");
 
   useEffect(() => {
     void window.api.appVersion().then(setVersion).catch(() => setVersion(""));
@@ -2343,7 +2344,7 @@ function SettingsPanel({
   const modeValue = settings.defaultMode || String(modes?.currentValue ?? "");
 
   return (
-    <div className="panel settings">
+    <div className="panel settings" data-tab={setTab}>
       <div className="settings-bar">
         <button className="settings-back" onClick={onBack}>← 返回</button>
         <span className="settings-bar-title">设置</span>
@@ -2355,7 +2356,29 @@ function SettingsPanel({
         </div>
       </div>
 
-      <section className="set-group">
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {([
+            ["general", "通用设置", "sliders"],
+            ["models", "模型与 Agent", "sparkle"],
+            ["balance", "账号与余额", "shield"],
+            ["mobile", "手机访问", "phone"],
+            ["github", "GitHub", "fork"],
+            ["data", "数据与关于", "folder"],
+          ] as const).map(([id, label, icon]) => (
+            <button
+              key={id}
+              className={`settings-nav-item ${setTab === id ? "on" : ""}`}
+              onClick={() => setSetTab(id)}
+            >
+              <Icon name={icon} size={14} />
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="settings-content">
+
+      <section className="set-group" data-cat="models">
         <h3>模型与 Agent</h3>
         <div className="set-row">
           <label>默认模型</label>
@@ -2466,7 +2489,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="models">
         <h3>模型角色</h3>
         <div className="set-row">
           <label>smol（轻任务）</label>
@@ -2483,7 +2506,7 @@ function SettingsPanel({
         <div className="set-hint">写入启动参数 --smol / --slow / --plan；agent 会按任务自动挑模型。</div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="models">
         <h3>自定义模型（OpenAI 兼容）</h3>
         {(settings.customModels ?? []).map((m) => (
           <div className="set-row" key={m.name}>
@@ -2529,7 +2552,7 @@ function SettingsPanel({
         <div className="set-hint">写入 ~/.omp/agent/models.yml（会留 .bak 备份），之后在模型下拉里出现。</div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="github">
         <h3>GitHub</h3>
         <div className="set-row">
           <label>自动上传</label>
@@ -2564,7 +2587,7 @@ function SettingsPanel({
           </div>
         </div>        <div className="set-hint">开启后：会话里你说过「上传/推送到 GitHub」，之后每轮结束会自动 commit + push；没有远端仓库时会用本机 git 凭据自动建一个公开仓库。</div>
       </section>
-      <section className="set-group">
+      <section className="set-group" data-cat="general">
         <h3>外观</h3>
         <div className="set-row">
           <label>主题</label>
@@ -2645,7 +2668,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="mobile">
         <h3>手机访问</h3>
         <div className="set-row">
           <label>开启远程服务</label>
@@ -2790,7 +2813,7 @@ function SettingsPanel({
           手机浏览器打开上面的地址即可查看会话、回消息、批权限。同一个 Wi‑Fi 用本机地址；要在外面用就打开 Cloudflare 隧道（首次会自动下载 cloudflared）。关掉软件服务就停。
         </div>
       </section>
-      <section className="set-group">
+      <section className="set-group" data-cat="balance">
         <h3>计费</h3>
         <div className="set-row">
           <label>DeepSeek 峰谷计费</label>
@@ -2850,9 +2873,14 @@ function SettingsPanel({
         </div>
         <div className="set-row">
           <label>DeepSeek API Key</label>
-        <div className="set-row">
-          <label />
           <div className="set-inline">
+            <input
+              className="grow"
+              type="password"
+              placeholder="sk-...（用于实时查询余额）"
+              value={settings.deepseekApiKey}
+              onChange={(e) => onChange({ deepseekApiKey: e.target.value })}
+            />
             <button
               className="ghost"
               onClick={async () => {
@@ -2864,14 +2892,6 @@ function SettingsPanel({
             </button>
             {cmMsg && cmMsg.startsWith("余额") ? <span className="set-hint">{cmMsg}</span> : null}
           </div>
-        </div>
-          <input
-            className="grow"
-            type="password"
-            placeholder="sk-...（用于实时查询余额）"
-            value={settings.deepseekApiKey}
-            onChange={(e) => onChange({ deepseekApiKey: e.target.value })}
-          />
         </div>        <div className="set-row">
           <label>初始余额（$）</label>
           <input
@@ -2884,7 +2904,7 @@ function SettingsPanel({
         </div>
         <div className="set-hint">填了初始余额，状态栏会显示「余 $x.xx」。价格填 0 时用 agent 回报的金额。</div>
       </section>
-      <section className="set-group">
+      <section className="set-group" data-cat="general">
         <h3>通知</h3>
         <div className="set-row">
           <label>回合完成时通知</label>
@@ -2899,7 +2919,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="data">
         <h3>数据</h3>
         <div className="set-row">
           <label>本地数据</label>
@@ -2914,7 +2934,7 @@ function SettingsPanel({
         </div>
       </section>
 
-      <section className="set-group">
+      <section className="set-group" data-cat="data">
         <h3>关于</h3>
         <div className="set-row">
           <label>版本</label>
@@ -2923,10 +2943,16 @@ function SettingsPanel({
           </span>
         </div>
       </section>
+        </div>
+      </div>
     </div>
   );
 }
 export type { DiffLine };
+
+
+
+
 
 
 

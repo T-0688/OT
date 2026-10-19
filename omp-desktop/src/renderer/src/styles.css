@@ -3975,3 +3975,135 @@ body {
   border-color: var(--dsw-alias-border-l3, var(--border));
   background: var(--panel-2);
 }
+
+/* ---------- 设置页：左导航 + 右内容 ---------- */
+.settings-layout {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 56px;
+  flex: 0 0 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.settings-nav-item.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-content .set-group {
+  display: none;
+}
+
+.panel.settings[data-tab="general"] .set-group[data-cat="general"],
+.panel.settings[data-tab="models"] .set-group[data-cat="models"],
+.panel.settings[data-tab="balance"] .set-group[data-cat="balance"],
+.panel.settings[data-tab="mobile"] .set-group[data-cat="mobile"],
+.panel.settings[data-tab="github"] .set-group[data-cat="github"],
+.panel.settings[data-tab="data"] .set-group[data-cat="data"] {
+  display: block;
+}
+
+/* 输入框圆角 + 对齐 */
+.set-group input[type="text"],
+.set-group input[type="password"],
+.set-group input[type="number"],
+.set-group input:not([type]),
+.set-group select {
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12.5px;
+  min-width: 220px;
+}
+
+.set-group input:focus,
+.set-group select:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l3, var(--border));
+}
+
+.set-group input[type="number"] {
+  max-width: 220px;
+}
+
+.set-row {
+  align-items: center;
+}
+
+.set-row label {
+  min-width: 150px;
+}
+
+.set-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 设置输入框不要撑破卡片 */
+.settings-content .set-inline .grow {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.settings-content .set-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.settings-content .set-row > .set-hint {
+  flex: 1 1 100%;
+}
+
+.settings-nav-item {
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+}
+
+.settings-nav {
+  padding: 6px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  backdrop-filter: blur(14px);
+}

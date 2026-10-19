@@ -843,3 +843,11 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 修复：迁移逻辑每次启动都覆盖 settings.json（导致改主题失效），改为仅在目标目录没有 settings.json 时迁移一次
 - 清理测试留下的两个临时会话
 - 版本 1.8.0 → 1.9.0
+
+### 51. 1.10.0：设置页改成左导航 + 右内容（2026-10-19）
+
+- 设置页重构为「左侧分类 + 右侧内容」，分类：通用设置 / 模型与 Agent / 账号与余额 / 手机访问 / GitHub / 数据与关于
+- 每个 `section.set-group` 加 `data-cat`，通过 `.panel.settings[data-tab=...]` 控制显示，避免大改 JSX 结构
+- 左侧导航做成磨砂卡片，选中项高亮
+- 输入框统一圆角 10px、高度 32px、宽度上限，修掉 API Key 行被按钮挤断的错位
+- 版本 1.9.0 → 1.10.0
