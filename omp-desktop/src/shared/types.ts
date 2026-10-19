@@ -126,6 +126,9 @@ export type AppSettings = {
   bgBlur: number;
   priceIn: number;
   priceOut: number;
+  priceCacheIn: number;
+  deepseekPricing: boolean;
+  offPeakFactor: number;
   balanceStart: number;
   extraDirs: string[];
   prewalk: boolean;
@@ -196,6 +199,7 @@ export type RendererApi = {
   clearSessions(): Promise<void>;
   onEvent(cb: (event: AgentEvent) => void): () => void;
 };
+
 
 
 

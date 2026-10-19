@@ -180,7 +180,7 @@ export default function App() {
   const [editing, setEditing] = useState<{ id: string; title: string } | null>(null);
 
   const [theme, setTheme] = useState<"dark" | "light">(
-    () => (localStorage.getItem("omp.theme") as "dark" | "light") || "dark",
+    () => (localStorage.getItem("omp.theme") as "dark" | "light") || "light",
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -384,10 +384,18 @@ export default function App() {
         .then((r) => setBalance(r.ok ? { total: r.total, currency: r.currency } : {}))
         .catch(() => setBalance({}));
     };
-    load();
+    const key = appSettings?.deepseekApiKey?.trim();
+    if (!key) {
+      setBalance({});
+      return;
+    }
+    const debounce = setTimeout(load, 600);
     const timer = setInterval(load, 120_000);
-    return () => clearInterval(timer);
-  }, []);
+    return () => {
+      clearTimeout(debounce);
+      clearInterval(timer);
+    };
+  }, [appSettings?.deepseekApiKey]);
   useEffect(() => {
     const offClients = window.api.onRemoteClients((n) => setPhoneOnline(n > 0));
     void window.api.remoteStatus().then((st) => { if (!st.running) setPhoneOnline(false); }).catch(() => {});
@@ -685,14 +693,26 @@ export default function App() {
   }, [items]);
   const turnCount = useMemo(() => items.filter((i) => i.kind === "turn").length + (running ? 1 : 0), [items, running]);
   const ctxPct = usage.size ? Math.min(100, ((usage.used ?? 0) / usage.size) * 100) : 0;
+  const isOffPeak = useMemo(() => {
+    const now = new Date();
+    const m = now.getUTCHours() * 60 + now.getUTCMinutes();
+    // DeepSeek 谷时：16:30–00:30 UTC
+    return m >= 16 * 60 + 30 || m < 30;
+  }, [usage.cost, turnCount]);
+
   const cost = useMemo(() => {
     if (typeof usage.cost === "number" && usage.cost > 0) return usage.cost;
     const pIn = appSettings?.priceIn ?? 0;
     const pOut = appSettings?.priceOut ?? 0;
-    const inTok = stats.inputTokens ?? 0;
+    const pCache = appSettings?.priceCacheIn || pIn * 0.1;
+    const factor = appSettings?.deepseekPricing && isOffPeak ? (appSettings?.offPeakFactor ?? 0.5) : 1;
+    const totalIn = stats.inputTokens ?? 0;
+    const hitRate = Math.min(100, Math.max(0, stats.cachePct ?? 0)) / 100;
+    const cachedTok = totalIn * hitRate;
+    const missTok = totalIn - cachedTok;
     const outTok = stats.outputTokens ?? 0;
-    return (inTok * pIn + outTok * pOut) / 1_000_000;
-  }, [usage.cost, appSettings?.priceIn, appSettings?.priceOut, stats.inputTokens, stats.outputTokens]);
+    return ((missTok * pIn + cachedTok * pCache + outTok * pOut) * factor) / 1_000_000;
+  }, [usage.cost, appSettings?.priceIn, appSettings?.priceOut, appSettings?.priceCacheIn, appSettings?.deepseekPricing, appSettings?.offPeakFactor, isOffPeak, stats.inputTokens, stats.outputTokens, stats.cachePct]);
   const rails = useMemo(() => {
     const map = new Map<number, { path: string; name: string }[]>();
     let current: { path: string; name: string }[] = [];
@@ -1054,9 +1074,7 @@ export default function App() {
               <Icon name="chat" size={15} />
               会话
             </button>
-            <button className="nav-kbd" onClick={() => setPaletteOpen(true)} title="命令面板 (Ctrl+K)">
-              ⌘K
-            </button>
+
           </div>
           {view === "chat" ? (
             <>
@@ -1164,7 +1182,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.7.0</span>
+            <span className="version">v1.9.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1556,6 +1574,11 @@ export default function App() {
           <span className="stat" title="会话轮次">
             第 {turnCount} 轮
           </span>
+          {appSettings?.deepseekPricing ? (
+            <span className={`stat peak ${isOffPeak ? "off" : ""}`} title="DeepSeek 峰谷计费：谷时按折扣价">
+              {isOffPeak ? "谷时" : "峰时"}
+            </span>
+          ) : null}
           <span className="stat" title="本次会话花费">
             ${cost.toFixed(4)}
           </span>
@@ -2770,6 +2793,42 @@ function SettingsPanel({
       <section className="set-group">
         <h3>计费</h3>
         <div className="set-row">
+          <label>DeepSeek 峰谷计费</label>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.deepseekPricing}
+              onChange={(e) => onChange({ deepseekPricing: e.target.checked })}
+            />
+            <span>{settings.deepseekPricing ? "开启" : "关闭"}</span>
+          </label>
+        </div>
+        <div className="set-row">
+          <label>缓存命中价（$ / 1M）</label>
+          <input
+            className="grow"
+            type="number"
+            step="0.001"
+            value={settings.priceCacheIn ?? 0}
+            onChange={(e) => onChange({ priceCacheIn: Number(e.target.value) })}
+          />
+        </div>
+        <div className="set-row">
+          <label>谷时折扣</label>
+          <input
+            className="grow"
+            type="number"
+            step="0.05"
+            min={0}
+            max={1}
+            value={settings.offPeakFactor ?? 0.5}
+            onChange={(e) => onChange({ offPeakFactor: Number(e.target.value) })}
+          />
+        </div>
+        <div className="set-hint">
+          DeepSeek 官方谷时（UTC 16:30–00:30，北京时间 00:30–08:30）按「谷时折扣」计价；价格填 0 时用 agent 回报的金额。
+        </div>
+        <div className="set-row">
           <label>输入价格（$ / 1M）</label>
           <input
             className="grow"
@@ -2791,6 +2850,21 @@ function SettingsPanel({
         </div>
         <div className="set-row">
           <label>DeepSeek API Key</label>
+        <div className="set-row">
+          <label />
+          <div className="set-inline">
+            <button
+              className="ghost"
+              onClick={async () => {
+                const r = await window.api.getBalance();
+                setCmMsg(r.ok ? `余额：${r.total?.toFixed(2)} ${r.currency ?? ""}` : `查询失败：${r.error}`);
+              }}
+            >
+              查询余额
+            </button>
+            {cmMsg && cmMsg.startsWith("余额") ? <span className="set-hint">{cmMsg}</span> : null}
+          </div>
+        </div>
           <input
             className="grow"
             type="password"
@@ -2853,6 +2927,11 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
+
 
 
 

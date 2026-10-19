@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultMode: "",
   defaultCwd: "",
   notifyOnTurnEnd: true,
-  theme: "dark",
+  theme: "light",
   background: "solid",
   customBackgroundPath: "",
   zoom: 1,
@@ -28,6 +28,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   bgBlur: 12,
   priceIn: 0,
   priceOut: 0,
+  priceCacheIn: 0,
+  deepseekPricing: true,
+  offPeakFactor: 0.5,
   balanceStart: 0,
   extraDirs: [],
   prewalk: false,
@@ -82,6 +85,8 @@ export class SettingsStore {
     return this.current;
   }
 }
+
+
 
 
 

@@ -578,8 +578,8 @@ if (!app.requestSingleInstanceLock()) {
     // 数据目录统一为 OT；把旧的 omp-desktop 内容合并进来（只补不删）
     const dataDir = join(app.getPath("appData"), "OT");
     const legacyDir = join(app.getPath("appData"), "omp-desktop");
-    if (existsSync(legacyDir)) {
-      // 只迁移我们自己的数据，避免碰到 Chromium 正在占用的缓存/锁文件
+    if (existsSync(legacyDir) && !existsSync(join(dataDir, "settings.json"))) {
+      // 只迁移我们自己的数据（仅首次），避免碰到 Chromium 正在占用的缓存/锁文件
       for (const item of ["settings.json", "sessions", "checkpoints", "bin"]) {
         const from = join(legacyDir, item);
         if (!existsSync(from)) continue;
@@ -1020,6 +1020,7 @@ if (!app.requestSingleInstanceLock()) {
     disposeSession();
   });
 }
+
 
 
 
