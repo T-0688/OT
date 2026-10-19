@@ -1,0 +1,16 @@
+{
+  "name": "ot-wechat-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Bridge Tencent Weixin ClawBot (iLink) to a local OT session",
+  "scripts": {
+    "login": "node bridge.mjs login",
+    "start": "node bridge.mjs run",
+    "status": "node bridge.mjs status"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  }
+}

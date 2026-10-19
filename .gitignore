@@ -3,6 +3,7 @@
 !/omp-desktop/
 !/omp-mobile/
 !/mobile/
+!/wechat-bridge/
 !/README.md
 !/omp-desktop-plan.md
 !/.gitignore
@@ -26,3 +27,4 @@ omp-desktop/dsh-css-window.txt
 omp-desktop/dsh-theme-extract.css
 omp-desktop/dsh-theme-rule.css
 omp-desktop/dsh-theme-rules.css
+

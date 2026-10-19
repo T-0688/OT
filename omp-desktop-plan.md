@@ -1048,3 +1048,29 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 版本 1.27.0 → 1.28.0
 
 验证：本机 `http://192.168.1.100:7788/` 返回 200（之前不可达）；cloudflared 命令行确认带 http2。
+
+### 70. 微信 ClawBot 桥接（2026-10-19）
+
+目标：在微信里直接跟 OT 的 agent 对话，不用服务器、不开公网端口。
+
+**协议**（拆 `@tencent-weixin/openclaw-weixin` 插件得到，未使用 OpenClaw）：
+- `POST ilink/bot/get_bot_qrcode?bot_type=3` → `qrcode` + `qrcode_img_content`（二维码链接）
+- `GET ilink/bot/get_qrcode_status?qrcode=…` → `wait/scaned/confirmed/expired`，confirmed 返回 `bot_token`、`ilink_bot_id`、`baseurl`、`ilink_user_id`
+- `POST ilink/bot/getupdates` `{get_updates_buf, base_info}` → `{msgs[], get_updates_buf}`，35s 长轮询
+- `POST ilink/bot/sendmessage` `{msg:{to_user_id, client_id, message_type:2, message_state:2, item_list:[{type:1,text_item:{text}}], context_token}}`
+- 请求头：`Authorization: Bearer <token>`、`AuthorizationType: ilink_bot_token`、`iLink-App-Id: bot`、`iLink-App-ClientVersion`（0x00MMNNPP）、`X-WECHAT-UIN`（随机 uint32 转 base64）
+
+**实现** `wechat-bridge/bridge.mjs`：
+- `login` 扫码绑定、`run` 长轮询转发、`status` 查看
+- 消息转发到本机 OT `ws://127.0.0.1:7788/ws`（`{type:"prompt"}`），收集 `text` 直到 `turn_end`
+- 回复去 Markdown 后用 `sendmessage` 发回，带原消息 `context_token`
+- 第一条消息自动绑定唯一用户，其他人忽略；`message_type=2`（机器人自己）忽略
+- 消息 ID 去重落盘，重启不重复回复
+- `-14` 识别为凭证过期，提示重新扫码；失败指数退避
+- 文件日志 `%APPDATA%\ot-wechat\bridge.log`（2MB 轮转）
+
+**踩坑**：微信 `msg_id` 是字符串 `v1:...`，uint64 保护逻辑误加引号导致 `"msg_id"::` 坏 JSON，每轮拉取失败。改为仅纯数字值加引号。
+
+**自启**：计划任务被拒（拒绝访问），改用启动文件夹 `OT-WeChat-Bridge.vbs` + `run-loop.cmd`（node 崩溃后 5 秒重启），无需管理员权限。
+
+**验证**：扫码绑定 `bot_id=4977964b3380@im.bot`；微信发「只回复 ok」→ 21 秒后收到回复；日志显示绑定用户与回复记录。
