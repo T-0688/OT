@@ -287,6 +287,15 @@ public class MainActivity extends Activity {
 
     public class NotifyBridge {
         @JavascriptInterface
+        public void setTarget(String host, String token, String proto) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("ws_host", host)
+                    .putString("ws_token", token)
+                    .putString("ws_proto", proto)
+                    .apply();
+        }
+
+        @JavascriptInterface
         public void post(String title, String body) {
             notifyTask(title, body);
         }
@@ -333,7 +342,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try {
-            Intent svc = new Intent(this, KeepAliveService.class);
+            Intent svc = new Intent(this, NotifyService.class);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
             else startService(svc);
         } catch (Exception ignored) {
@@ -344,11 +353,12 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         try {
-            stopService(new Intent(this, KeepAliveService.class));
+            stopService(new Intent(this, NotifyService.class));
         } catch (Exception ignored) {
         }
         if (web != null) {
             web.evaluateJavascript("window.__otResume && window.__otResume()", null);
         }
     }}
+
 

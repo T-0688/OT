@@ -986,3 +986,21 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 断线后重连退避仍是 800ms 起；首屏有 localStorage 缓存，重连期间不白屏
 
 版本 1.22.0 → 1.23.0
+
+### 65. 1.24.0：A 方案——原生 WebSocket 长连接服务（2026-10-19）
+
+手机端彻底绕开 WebView 的后台限制：
+
+- `OtWsClient.java`：自己实现的 RFC6455 客户端（握手、文本帧、分片、掩码、ping/pong、close），`wss` 走 `SSLSocket`（`createSocket(host,port)` 保证带 SNI），不引第三方库
+- `NotifyService.java`：前台服务，独立于 WebView 运行
+  - 连接循环：失败按 800ms→8s 指数退避重连
+  - 心跳：每 10s 发 ping，35s 无消息判定死连并重建
+  - `ConnectivityManager.registerDefaultNetworkCallback`：切网立即重连
+  - 收到 `{"t":"notify"}` 用 `org.json` 解析后发系统通知（`ot_tasks` 高优先级）
+  - `PARTIAL_WAKE_LOCK` + 常驻低优先级通知「OT 保持连接中」
+- MainActivity：`onPause` 启动服务、`onResume` 停止并调用 `window.__otResume()`；JS 桥新增 `setTarget(host, token, proto)`，页面每次连接时把目标写给原生层
+- Manifest：`NotifyService`、`FOREGROUND_SERVICE`、`WAKE_LOCK`、`ACCESS_NETWORK_STATE`
+- 删除旧的 `KeepAliveService`
+- 版本 1.23.0 → 1.24.0
+
+**验证**：把 `OtWsClient` 抽到 JVM 用真实服务端跑通（收到 hello、ping 正常、close 正常）；APK manifest 确认含 `dev.ot.app.NotifyService` 与全部权限。真机后台/锁屏行为需要你实测。

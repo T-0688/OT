@@ -213,6 +213,7 @@ function showLocalNotification(title, body) {
 
 function connect() {
   const proto = host.indexOf('127.0.0.1') >= 0 || host.indexOf('localhost') >= 0 ? 'ws://' : 'wss://';
+  try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, proto.replace(':', '')); } catch (e) {}
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
   ws.onopen = () => { retry = 800; setStatus('已连接'); };
   ws.onclose = () => {
@@ -484,6 +485,7 @@ try {
 connect();
 </script>
 </body></html>
+
 
 
 
