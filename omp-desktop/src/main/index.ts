@@ -9,6 +9,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { AgentSession } from "./agent/session.js";
 import { findAgent, listAgents } from "./agents.js";
 import { SessionStore } from "./store.js";
+import { SessionPool } from "./session-pool.js";
 import { dropCheckpoints, restoreCheckpoint, saveCheckpoint } from "./checkpoints.js";
 import { RemoteServer } from "./remote.js";
 import { Tunnel } from "./tunnel.js";
@@ -42,6 +43,72 @@ function agentExtraArgs(): string[] {
   if (cfg?.slowModel) args.push(`--slow=${cfg.slowModel}`);
   if (cfg?.planModel) args.push(`--plan=${cfg.planModel}`);
   return args;
+}
+
+let pool: SessionPool | null = null;
+
+/** 后台会话事件：落盘、按需通知，不打扰当前桌面会话 */
+function handlePoolEvent(id: string, event: AgentEvent): void {
+  if (!id) return;
+  if (id === currentSessionId) return; // 当前会话走原来的 emit 路径
+  if (event.t === "log" || event.t === "agent_exit" || event.t === "ready") {
+    if (event.t === "ready" && !store?.get(id)) {
+      const now = new Date().toISOString();
+      store?.create({
+        id,
+        agentId: event.agentId,
+        cwd: event.cwd,
+        title: store?.get(id)?.title ?? "后台会话",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    return;
+  }
+  if (!store?.get(id)) {
+    const now = new Date().toISOString();
+    store?.create({
+      id,
+      agentId: currentAgentId,
+      cwd: sessionCwd,
+      title: "后台会话",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  store?.append(id, event);
+
+  if (event.t === "user" && event.text) {
+    const meta = store?.get(id);
+    if (meta && (meta.title === "后台会话" || !meta.title)) {
+      store?.rename(id, event.text.slice(0, 60).replace(/\s+/g, " "));
+    }
+  }
+  if (event.t === "turn_end") {
+    const meta = store?.get(id);
+    remote?.notify("OT", "当前任务完成", id);
+    if (win && !win.isFocused()) {
+      win.flashFrame(true);
+      if (Notification.isSupported()) {
+        const note = new Notification({ title: "OT · 后台任务完成", body: meta?.title ?? "有一个会话跑完了" });
+        note.on("click", () => win?.show());
+        note.show();
+      }
+    }
+    win?.webContents.send("remote:clients", 0);
+  }
+}
+
+function ensurePool(): SessionPool {
+  if (pool) return pool;
+  pool = new SessionPool(
+    (onEvent) => {
+      const s = new AgentSession(findAgent(settings!.get().defaultAgent ?? currentAgentId), onEvent);
+      return s;
+    },
+    handlePoolEvent,
+  );
+  return pool;
 }
 
 function emit(event: AgentEvent): void {
@@ -1032,6 +1099,48 @@ app.on("second-instance", () => {
             return { ok: false, error: String(err?.message ?? err) };
           }
         },
+        startBackground: async (cwd: string, agentId?: string) => {
+          try {
+            const cfg = settings!.get();
+            const p = ensurePool();
+            const started = await p.start({
+              cwd: cwd || sessionCwd,
+              autoApprove: cfg.approvalMode === "auto",
+              extraArgs: agentExtraArgs(),
+            });
+            return { ok: true, sessionId: started.id };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
+        promptSession: async (id: string, text: string) => {
+          try {
+            // 目标是当前桌面会话：直接走它，避免同一 id 建两份 AgentSession
+            if (id === currentSessionId && session) {
+              emit({ t: "user", text });
+              void session.prompt(text, []).catch((err) => console.error("active prompt failed", err));
+              return { ok: true };
+            }
+            handlePoolEvent(id, { t: "user", text });
+            const p = ensurePool();
+            if (!p.has(id)) {
+              const meta = store?.get(id);
+              if (!meta) return { ok: false, error: "会话不存在" };
+              await p.resume({
+                id,
+                cwd: meta.cwd,
+                autoApprove: settings!.get().approvalMode === "auto",
+                extraArgs: agentExtraArgs(),
+              });
+            }
+            void p.prompt(id, text).catch((err) => {
+              console.error("background prompt failed", err);
+            });
+            return { ok: true };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
         history: (id: string) => store?.read(id) ?? [],
         onClients: (count: number) => win?.webContents.send("remote:clients", count),
         prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
@@ -1164,6 +1273,48 @@ app.on("second-instance", () => {
             return { ok: false, error: String(err?.message ?? err) };
           }
         },
+        startBackground: async (cwd: string, agentId?: string) => {
+          try {
+            const cfg = settings!.get();
+            const p = ensurePool();
+            const started = await p.start({
+              cwd: cwd || sessionCwd,
+              autoApprove: cfg.approvalMode === "auto",
+              extraArgs: agentExtraArgs(),
+            });
+            return { ok: true, sessionId: started.id };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
+        promptSession: async (id: string, text: string) => {
+          try {
+            // 目标是当前桌面会话：直接走它，避免同一 id 建两份 AgentSession
+            if (id === currentSessionId && session) {
+              emit({ t: "user", text });
+              void session.prompt(text, []).catch((err) => console.error("active prompt failed", err));
+              return { ok: true };
+            }
+            handlePoolEvent(id, { t: "user", text });
+            const p = ensurePool();
+            if (!p.has(id)) {
+              const meta = store?.get(id);
+              if (!meta) return { ok: false, error: "会话不存在" };
+              await p.resume({
+                id,
+                cwd: meta.cwd,
+                autoApprove: settings!.get().approvalMode === "auto",
+                extraArgs: agentExtraArgs(),
+              });
+            }
+            void p.prompt(id, text).catch((err) => {
+              console.error("background prompt failed", err);
+            });
+            return { ok: true };
+          } catch (err: any) {
+            return { ok: false, error: String(err?.message ?? err) };
+          }
+        },
         history: (id: string) => store?.read(id) ?? [],
         onClients: (count: number) => win?.webContents.send("remote:clients", count),
         permission: (id: string, optionId: string) => void session?.respondPermission(id, optionId),
@@ -1276,6 +1427,9 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
+
 
 
 

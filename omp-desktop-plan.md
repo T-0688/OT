@@ -1148,3 +1148,32 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - 验证：通过 OT 的桥接发问「调用 ai-memory 的工具查一下记得什么」，agent 成功调用 MCP 工具并读回统计（当时 2 会话 / 45 条观测，0 页面）
 - 桌面实例与微信实例共用同一份 omp 配置，因此共享同一记忆库
 - 注意：新装是空的，需要几轮会话才会积累出 wiki 页面与 handoff
+
+### 77. 1.35.0：多会话后台池 + agent 跨会话发消息（2026-10-20）
+
+**后台会话池**（`src/main/session-pool.ts`）
+- `SessionPool` 管理多个 `AgentSession`，每个会话独立 emitter、独立落盘
+- 事件绑定：`ready` 里拿到 sessionId 后绑定，之后事件都按该 id 入库
+- 后台会话完成时：桌面通知 + 手机 `notify`，**不切换桌面视图**
+
+**HTTP 控制 API**（复用 7788 端口，token 鉴权）
+- `POST /api/start {cwd}` → 后台建会话，返回 sessionId（不切视图）
+- `POST /api/send {sessionId, text}` → 投递消息
+- `GET /api/events?sessionId&limit=` → 读事件（给桥接/工具轮询回复）
+- `WS {type:"prompt", sessionId, text}` 同样支持定向发送
+- 目标是当前桌面会话时直接走桌面 session，避免同一 id 两份 AgentSession
+
+**ot-control MCP**（`tools/ot-control-mcp.mjs`，已注册 `~/.omp/agent/mcp.json`）
+- `list_sessions` / `send_message` / `start_session` / `wait_reply`
+- agent 可自行决定给哪个会话发消息
+
+**微信桥接改造**
+- 不再依赖 7789 headless 实例，改用主实例的后台会话（`data/session.json` 记住 id）
+- 修复 token 与端口错配导致的 401
+- 轮询改用「发送前事件数 + 增量 turn_end」判断本轮，避免读到上一轮
+
+**实测**
+- 微信里说「用 list_sessions 看看…给标题带网站的发一句：只回复 OK」
+- agent 调用 MCP 成功，返回 `{"ok":true}`
+- 目标会话（`D:\.Daily\网站`）后台执行并产出 `text: OK` + `turn_end`
+- 桌面当前视图未被切换；7789 实例与它的自启项已移除

@@ -9,7 +9,11 @@ import type { AgentEvent } from "../shared/types.js";
 export type RemoteHooks = {
   sessions: () => { id: string; title: string; cwd: string; updatedAt?: string }[];
   open: (id: string) => Promise<{ ok: boolean; title?: string; error?: string }>;
-  start: (cwd: string, agentId?: string) => Promise<{ ok: boolean; error?: string }>;
+  start: (cwd: string, agentId?: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>;
+  /** 在后台池里新建会话（不切换桌面视图） */
+  startBackground: (cwd: string, agentId?: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>;
+  /** 给指定会话发消息（后台执行，不切视图） */
+  promptSession: (id: string, text: string) => Promise<{ ok: boolean; error?: string }>;
   prompt: (text: string, images?: { data: string; mimeType: string; name?: string }[]) => Promise<{ ok: boolean; error?: string }>;
   permission: (id: string, optionId: string) => void;
   cancel: () => void;
@@ -196,6 +200,55 @@ export class RemoteServer {
       res.end(JSON.stringify({ sessions: this.hooks.sessions(), current: this.hooks.snapshot().title ? this.currentId : null }));
       return;
     }
+    if (parsed.pathname === "/api/start" || parsed.pathname === "/api/send") {
+      const tokenOk =
+        parsed.searchParams.get("token") === this.token ||
+        (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "") === this.token;
+      if (!tokenOk) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 1_000_000) req.destroy();
+      });
+      req.on("end", () => {
+        void (async () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            let result: { ok: boolean; error?: string; sessionId?: string };
+            if (parsed.pathname === "/api/start") {
+              result = await this.hooks.startBackground(String(data.cwd ?? ""), data.agentId);
+            } else {
+              const id = String(data.sessionId ?? "");
+              if (!id) result = { ok: false, error: "缺少 sessionId" };
+              else result = await this.hooks.promptSession(id, String(data.text ?? ""));
+            }
+            res.writeHead(200, { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*" });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }));
+          }
+        })();
+      });
+      return;
+    }
+    if (parsed.pathname === "/api/events") {
+      if (parsed.searchParams.get("token") !== this.token) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      const id = parsed.searchParams.get("sessionId") ?? "";
+      const limit = Math.min(500, Number(parsed.searchParams.get("limit") ?? 80));
+      const events = id ? this.hooks.history(id).slice(-limit) : [];
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*" });
+      res.end(JSON.stringify({ sessionId: id, events }));
+      return;
+    }
     if (parsed.pathname === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
@@ -248,7 +301,9 @@ export class RemoteServer {
             socket.send(JSON.stringify({ t: "note", text: `文件保存失败：${String(err?.message ?? err)}` }));
           }
         }
-        if (msg.type === "prompt" && (msg.text || (msg as any).images?.length)) {
+        if (msg.type === "prompt" && (msg as any).sessionId && msg.text) {
+          void this.hooks.promptSession(String((msg as any).sessionId), String(msg.text));
+        } else if (msg.type === "prompt" && (msg.text || (msg as any).images?.length)) {
           void this.hooks.prompt(String(msg.text ?? ""), (msg as any).images);
         }
         if (msg.type === "permission" && msg.id && msg.optionId) this.hooks.permission(msg.id, msg.optionId);
@@ -296,6 +351,7 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
 
 
 
