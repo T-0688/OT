@@ -249,6 +249,22 @@ export class RemoteServer {
       res.end(JSON.stringify({ sessionId: id, events }));
       return;
     }
+    if (parsed.pathname === "/setup.sh") {
+      if (parsed.searchParams.get("token") !== this.token) {
+        res.writeHead(401, { "content-type": "text/plain; charset=utf-8" });
+        res.end("unauthorized");
+        return;
+      }
+      try {
+        const script = readFileSync(join(app.getAppPath(), "tools", "frps-setup.sh"));
+        res.writeHead(200, { "content-type": "text/x-shellscript; charset=utf-8", "cache-control": "no-store" });
+        res.end(script);
+      } catch {
+        res.writeHead(404);
+        res.end("not found");
+      }
+      return;
+    }
     if (parsed.pathname === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
@@ -351,6 +367,7 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
 
 
 

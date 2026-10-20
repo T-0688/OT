@@ -1177,3 +1177,14 @@ export default { id, name, description, commands: [{ id, title, run(ctx) }] }
 - agent 调用 MCP 成功，返回 `{"ok":true}`
 - 目标会话（`D:\.Daily\网站`）后台执行并产出 `text: OK` + `turn_end`
 - 桌面当前视图未被切换；7789 实例与它的自启项已移除
+
+### 78. 自建 frp 中转（2026-10-20）
+
+- 阿里云 ECS：`120.26.20.154`，Ubuntu 24.04，2C2G，3Mbps
+- 服务器 `/usr/local/frp/frps` 0.71.1，systemd `frps.service`，`bindPort=7000`，token 鉴权
+- 安装脚本：`ot-frp/frps-setup.sh`（同内容随 OT 发布，`GET /setup.sh?token=` 可取）
+- 电脑端 `D:\.Daily\ot-frp\`：`frpc.exe` + `frpc.toml`（server 120.26.20.154:7000，remotePort 17788 → 本地 7788）
+- 自启：`HKCU\...\Run\OT-FRP` → `wscript start-frpc.vbs`（启动文件夹写入被拒，改用注册表 Run）
+- 实测：公网 `http://120.26.20.154:17788/?token=…` 返回 200；公网 WS 握手 129ms 收到 hello
+- 手机地址：`http://120.26.20.154:17788/?token=50628324ae47c2c19567d9a8`
+- 风险：17788 对公网开放，页面本身无鉴权（API/WS 需要 token）；token 泄露等于可连入
