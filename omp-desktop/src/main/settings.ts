@@ -24,6 +24,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tunnelName: "",
   remoteToken: "",
   reasoningDisplay: "summary",
+  translateProvider: "local",
+  translateAllowCloud: false,
+  showTools: false,
+  pinnedSessions: [],
+  providerBalanceUrls: {},
+  schedules: [],
   bgShade: 0.55,
   bgBlur: 12,
   priceIn: 0,
@@ -42,6 +48,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   githubBlockSecrets: true,
   officialModelsOnly: true,
   lastSessionId: "",
+  pushProvider: "off",
+  pushNtfyServer: "https://ntfy.sh",
+  pushNtfyTopic: "",
+  pushNtfyUser: "",
+  pushNtfyPass: "",
+  pushBarkUrl: "",
+  pushClickBase: "",
+  pushDeepLink: true,
   customModels: [],
   tunnelToken: "",
   tunnelHostname: "",
@@ -87,6 +101,15 @@ export class SettingsStore {
     return this.current;
   }
 }
+
+
+
+
+
+
+
+
+
 
 
 

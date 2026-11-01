@@ -86,6 +86,8 @@ export class Tunnel {
   }
 
   async start(port: number, opts?: { mode?: "quick" | "named" | "local"; token?: string; hostname?: string; name?: string }): Promise<void> {
+    // Cloudflare 隧道已移除（用户要求彻底去掉），此处直接拒绝
+    throw new Error("Cloudflare 隧道已移除，请使用 frp 或局域网访问");
     if (this.proc) return;
     this.state = "starting";
     this.error = null;
@@ -165,6 +167,7 @@ export class Tunnel {
     this.notify();
   }
 }
+
 
 
 

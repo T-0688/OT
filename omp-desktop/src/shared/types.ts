@@ -77,7 +77,7 @@ export type SessionMeta = {
   title: string;
   createdAt: string;
   updatedAt: string;
-  stats?: { tokens: number; cost: number; turns: number; used?: number; size?: number };
+  stats?: { tokens: number; cost: number; turns: number; used?: number; size?: number; cachePct?: number };
 };
 
 export type AgentInfo = {
@@ -102,6 +102,17 @@ export type WeWallpaper = {
   preview: string;
 };
 
+export type ScheduleTask = {
+  id: string;
+  title: string;
+  cwd: string;
+  prompt: string;
+  everyMinutes: number;
+  dailyAt: string;
+  enabled: boolean;
+  lastRunAt?: string;
+};
+
 export type AppSettings = {
   defaultAgent: string;
   defaultModel: string;
@@ -109,7 +120,7 @@ export type AppSettings = {
   defaultCwd: string;
   notifyOnTurnEnd: boolean;
   theme: "dark" | "light";
-  background: "solid" | "wallpaper" | "custom";
+  background: "solid" | "wallpaper" | "custom" | "we";
   customBackgroundPath: string;
   zoom: number;
   weWallpaper: WeWallpaper | null;
@@ -123,6 +134,12 @@ export type AppSettings = {
   tunnelName: string;
   remoteToken: string;
   reasoningDisplay: "full" | "summary" | "hidden";
+  translateProvider: "local" | "omp" | "deepseek" | "off";
+  translateAllowCloud: boolean;
+  showTools: boolean;
+  pinnedSessions: string[];
+  providerBalanceUrls: Record<string, string>;
+  schedules: ScheduleTask[];
   bgShade: number;
   bgBlur: number;
   priceIn: number;
@@ -141,6 +158,14 @@ export type AppSettings = {
   githubBlockSecrets: boolean;
   officialModelsOnly: boolean;
   lastSessionId: string;
+  pushProvider: "off" | "ntfy" | "bark";
+  pushNtfyServer: string;
+  pushNtfyTopic: string;
+  pushNtfyUser: string;
+  pushNtfyPass: string;
+  pushBarkUrl: string;
+  pushClickBase: string;
+  pushDeepLink: boolean;
   customModels: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }[];
   tunnelToken: string;
   tunnelHostname: string;
@@ -168,6 +193,7 @@ export type RendererApi = {
   deleteSession(id: string): Promise<void>;
   searchMessages(query: string): Promise<SearchHit[]>;
   respondPermission(toolCallId: string, optionId: string): Promise<void>;
+  respondPermissionBg(sessionId: string, toolCallId: string, optionId: string): Promise<boolean>;
   setConfig(configId: string, value: string): Promise<{ ok: boolean; error?: string }>;
   cancel(): Promise<void>;
   pickDirectory(): Promise<string | null>;
@@ -193,6 +219,20 @@ export type RendererApi = {
   remoteTunnel(on: boolean): Promise<RemoteStatus>;
   addCustomModel(input: { name: string; baseUrl: string; apiKey: string; modelId: string; api: string }): Promise<{ ok: boolean; error?: string }>;
   getBalance(): Promise<{ ok: boolean; currency?: string; total?: number; error?: string }>;
+  testPush(): Promise<{ ok: boolean; error?: string }>;
+  translateThinking(text: string): Promise<string>;
+  healthCheck(): Promise<Record<string, boolean>>;
+  modelPricing(): Promise<{ selector: string; input: number; output: number; cacheRead: number }[]>;
+  providerBalances(): Promise<{ provider: string; ok: boolean; amount?: number; currency?: string; error?: string; detail?: string; models?: { model: string; requests: number; cost: number; tokens: number }[] }[]>;
+  searchSessions(q: string): Promise<{ id: string; title: string; cwd: string; role: string; snippet: string }[]>;
+  saveSchedule(task: ScheduleTask): Promise<ScheduleTask[]>;
+  deleteSchedule(id: string): Promise<ScheduleTask[]>;
+  runSchedule(id: string): Promise<boolean>;
+  listTasks(): Promise<{ id: string; busy: boolean; lastSeen: number; title: string; cwd: string; status?: "idle" | "running" | "permission" | "failed" }[]>;
+  cancelTask(id: string): Promise<boolean>;
+  openTask(id: string): Promise<SessionMeta | null>;
+  onRemoteClients(cb: (n: number) => void): void;
+  onRemoteTunnel(cb: (url: string | null) => void): void;
   deepseekModels(): Promise<{ ok: boolean; ids: string[]; error?: string }>;
   lanUrls(): Promise<string[]>;
   onScreenshot(cb: (base64: string) => void): () => void;
@@ -202,6 +242,7 @@ export type RendererApi = {
   fixGitignore(): Promise<{ ok: boolean; added: number; error?: string }>;
   saveCheckpoint(sessionId: string, turnId: string, path: string, oldText: string | null): Promise<void>;
   restoreCheckpoint(sessionId: string, turnId: string): Promise<{ restored: number; removed: number; failed: number }>;
+  restoreCheckpointRange(sessionId: string, turnIds: string[]): Promise<{ restored: number; removed: number; failed: number }>;
   revealInFolder(path: string): Promise<void>;
   openWith(path: string): Promise<{ ok: boolean; error?: string }>;
   clearSessions(): Promise<void>;
@@ -230,6 +271,38 @@ export type RendererApi = {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+declare global {
+  interface Window {
+    api: RendererApi;
+  }
+}
 
 
 

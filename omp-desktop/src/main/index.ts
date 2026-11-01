@@ -4,17 +4,22 @@ import { networkInterfaces } from "node:os";
 import { tmpdir } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { extname, join } from "node:path";
+import { connect as netConnect } from "node:net";
 import { pathToFileURL } from "node:url";
 import { randomBytes, randomUUID } from "node:crypto";
 import { AgentSession } from "./agent/session.js";
 import { findAgent, listAgents } from "./agents.js";
 import { SessionStore } from "./store.js";
 import { SessionPool } from "./session-pool.js";
-import { dropCheckpoints, restoreCheckpoint, saveCheckpoint } from "./checkpoints.js";
+
+// 通知/任务栏显示名，必须在 ready 之前设置
+app.setName("OT");
+app.setAppUserModelId("com.local.ot");
+import { dropCheckpoints, restoreCheckpoint, restoreCheckpointRange, saveCheckpoint } from "./checkpoints.js";
 import { RemoteServer } from "./remote.js";
 import { Tunnel } from "./tunnel.js";
 import { SettingsStore } from "./settings.js";
-import type { AgentEvent, AppSettings, ConfigOption, SkillInfo, StartOptions, WeWallpaper } from "../shared/types.js";
+import type { AgentEvent, AppSettings, ConfigOption, SkillInfo, StartOptions, WeWallpaper, ScheduleTask } from "../shared/types.js";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "ompmedia", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
@@ -46,6 +51,8 @@ function agentExtraArgs(): string[] {
 }
 
 let pool: SessionPool | null = null;
+const bgPermissions = new Set<string>();
+const bgFailures = new Set<string>();
 
 /** 后台会话事件：落盘、按需通知，不打扰当前桌面会话 */
 function handlePoolEvent(id: string, event: AgentEvent): void {
@@ -77,6 +84,11 @@ function handlePoolEvent(id: string, event: AgentEvent): void {
     });
   }
   store?.append(id, event);
+  if (event.t === "permission") {
+    bgPermissions.add(id);
+    bgFailures.delete(id);
+    win?.webContents.send("agent:event", { ...event, sessionId: id });
+  }
 
   if (event.t === "user" && event.text) {
     const meta = store?.get(id);
@@ -84,9 +96,12 @@ function handlePoolEvent(id: string, event: AgentEvent): void {
       store?.rename(id, event.text.slice(0, 60).replace(/\s+/g, " "));
     }
   }
+  if (event.t === "error") bgFailures.add(id);
   if (event.t === "turn_end") {
+    bgPermissions.delete(id);
+    bgFailures.delete(id);
     const meta = store?.get(id);
-    remote?.notify("OT", "当前任务完成", id);
+    { const body = lastReplyText(id) || "当前任务完成"; remote?.notify(`OT · ${meta?.title ?? "后台任务"}`, body, id); void sendPush(`OT · ${meta?.title ?? "后台任务"}`, body, id); }
     if (win && !win.isFocused()) {
       win.flashFrame(true);
       if (Notification.isSupported()) {
@@ -111,6 +126,421 @@ function ensurePool(): SessionPool {
   return pool;
 }
 
+function lastReplyText(id: string, limit = 160): string {
+  try {
+    const events = store?.read(id) ?? [];
+    let start = 0;
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].t === "user") {
+        start = i;
+        break;
+      }
+    }
+    const text = events
+      .slice(start)
+      .filter((e) => e.t === "text")
+      .map((e: any) => e.text)
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) return "";
+    return text.length > limit ? text.slice(0, limit) + "…" : text;
+  } catch {
+    return "";
+  }
+}
+
+interface OmpProvider {
+  baseUrl: string;
+  apiKey: string;
+  api: string;
+}
+
+/** 从 ~/.omp/agent/models.yml 里粗略解析 provider（只取我们需要的三项） */
+function readOmpProviders(): Record<string, OmpProvider> {
+  try {
+    const file = join(app.getPath("home"), ".omp", "agent", "models.yml");
+    const lines = readFileSync(file, "utf8").split(/\r?\n/);
+    const out: Record<string, OmpProvider> = {};
+    let cur: string | null = null;
+    for (const line of lines) {
+      const prov = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+      if (prov) {
+        cur = prov[1];
+        out[cur] = { baseUrl: "", apiKey: "", api: "openai-completions" };
+        continue;
+      }
+      if (!cur) continue;
+      const kv = /^ {4}(baseUrl|apiKey|api):\s*(.+?)\s*$/.exec(line);
+      if (kv) {
+        const value = kv[2].replace(/^["']|["']$/g, "");
+        if (kv[1] === "baseUrl") out[cur].baseUrl = value;
+        if (kv[1] === "apiKey") out[cur].apiKey = value;
+        if (kv[1] === "api") out[cur].api = value;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const TRANSLATE_PROMPT =
+  "你是翻译器。把用户给的模型思考过程翻译成简体中文，保留代码、命令、路径、专有名词原样。只输出译文，不要解释，不要加前后缀。";
+
+async function translateText(text: string): Promise<string> {
+  const cfg = settings!.get();
+  const clipped = text.length > 12000 ? text.slice(0, 12000) : text;
+  if (!clipped.trim()) return "";
+  const provider = cfg.translateProvider ?? "omp";
+  if (provider === "off") return "";
+
+  const messages = [
+    { role: "system", content: TRANSLATE_PROMPT },
+    { role: "user", content: clipped },
+  ];
+
+  // 本地 Ollama 小模型，完全免费
+  if (provider === "local") {
+    try {
+      const res = await fetch("http://127.0.0.1:11434/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "qwen-ot", temperature: 0.2, messages }),
+      });
+      if (res.ok) {
+        const json: any = await res.json();
+        const out = String(json?.choices?.[0]?.message?.content ?? "").trim();
+        if (out) return out;
+      }
+    } catch {
+      /* 落到下面的云端兜底 */
+    }
+  }
+
+  if (provider === "local" && cfg.translateAllowCloud !== true) return "";
+
+  // 用 omp 里已经配好的模型（如 aliyun/deepseek-v4.1-flash）
+  if (provider === "omp") {
+    const smol = String(cfg.smolModel ?? "");
+    const [provName, ...rest] = smol.split("/");
+    const modelId = rest.join("/");
+    const providers = readOmpProviders();
+    const p = provName ? providers[provName] : undefined;
+    if (p && modelId && p.baseUrl && p.apiKey && (p.api === "openai-completions" || !p.api)) {
+      try {
+        const res = await fetch(`${p.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${p.apiKey}` },
+          body: JSON.stringify({ model: modelId, temperature: 0.2, messages }),
+        });
+        if (res.ok) {
+          const json: any = await res.json();
+          const out = String(json?.choices?.[0]?.message?.content ?? "").trim();
+          if (out) return out;
+        }
+      } catch {
+        /* 落到 DeepSeek */
+      }
+    }
+  }
+
+  const key = cfg.deepseekApiKey;
+  if (!key) return "";
+  try {
+    const res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: "deepseek-chat", temperature: 0.2, messages }),
+    });
+    if (!res.ok) return "";
+    const json: any = await res.json();
+    return String(json?.choices?.[0]?.message?.content ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function sendPush(title: string, body: string, sessionId?: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cfg = settings!.get();
+    if (cfg.pushProvider === "off") return { ok: false, error: "未开启推送" };
+    const base = (cfg.pushClickBase || "").replace(/\/+$/, "");
+    const deep = cfg.pushDeepLink !== false && sessionId ? `omp://open?session=${encodeURIComponent(sessionId)}` : "";
+    const click = deep
+      ? deep
+      : base
+        ? `${base}/?token=${encodeURIComponent(cfg.remoteToken)}${sessionId ? `&open=${encodeURIComponent(sessionId)}` : ""}`
+        : "";
+    if (cfg.pushProvider === "ntfy") {
+      const server = (cfg.pushNtfyServer || "https://ntfy.sh").replace(/\/+$/, "");
+      if (!cfg.pushNtfyTopic) return { ok: false, error: "没填 ntfy topic" };
+      const auth = cfg.pushNtfyUser
+        ? "Basic " + Buffer.from(`${cfg.pushNtfyUser}:${cfg.pushNtfyPass ?? ""}`).toString("base64")
+        : "";
+      const res = await fetch(server, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(auth ? { authorization: auth } : {}) },
+        body: JSON.stringify({
+          topic: cfg.pushNtfyTopic,
+          title,
+          message: body,
+          priority: 4,
+          tags: ["robot"],
+          ...(click ? { click } : {}),
+        }),
+      });
+      if (!res.ok) return { ok: false, error: `ntfy HTTP ${res.status}` };
+      return { ok: true };
+    }
+    if (cfg.pushProvider === "bark") {
+      const bark = (cfg.pushBarkUrl || "").replace(/\/+$/, "");
+      if (!bark) return { ok: false, error: "没填 Bark 地址" };
+      const url = `${bark}/${encodeURIComponent(title)}/${encodeURIComponent(body)}${click ? `?url=${encodeURIComponent(click)}` : ""}`;
+      const res = await fetch(url);
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok || (json?.code && json.code !== 200)) return { ok: false, error: `Bark ${res.status} ${json?.message ?? ""}` };
+      return { ok: true };
+    }
+    return { ok: false, error: "未知推送方式" };
+  } catch (err: any) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+}
+
+function tcpOk(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = netConnect({ host, port, timeout: 2000 });
+    const done = (v: boolean) => {
+      try {
+        sock.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(v);
+    };
+    sock.once("connect", () => done(true));
+    sock.once("error", () => done(false));
+    sock.once("timeout", () => done(false));
+  });
+}
+
+async function httpOk(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function healthCheck(): Promise<Record<string, boolean>> {
+  const cfg = settings!.get();
+  let bridge = false;
+  try {
+    const lock = readFileSync("D:\\\\.Daily\\\\ot-wechat\\\\data\\\\bridge.lock", "utf8").trim();
+    const pid = Number(lock);
+    if (pid) {
+      process.kill(pid, 0);
+      bridge = true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {
+    ot: true,
+    remote: await tcpOk("127.0.0.1", cfg.remotePort ?? 7788),
+    frp: await tcpOk("120.26.20.154", 7000),
+    ntfy: await httpOk("http://127.0.0.1:2586/v1/health"),
+    ollama: await httpOk("http://127.0.0.1:11434/api/tags"),
+    bridge,
+  };
+}
+
+function scheduleDue(task: ScheduleTask, now: number): boolean {
+  if (!task.enabled) return false;
+  if (task.everyMinutes > 0) {
+    const last = task.lastRunAt ? Date.parse(task.lastRunAt) : 0;
+    return now - last >= task.everyMinutes * 60_000;
+  }
+  if (task.dailyAt) {
+    const [h, m] = task.dailyAt.split(":").map(Number);
+    const d = new Date(now);
+    if (Number.isNaN(h) || Number.isNaN(m)) return false;
+    if (d.getHours() !== h || d.getMinutes() !== m) return false;
+    return !task.lastRunAt || new Date(task.lastRunAt).toDateString() !== d.toDateString();
+  }
+  return false;
+}
+
+async function runScheduleTask(task: ScheduleTask): Promise<void> {
+  const p = ensurePool();
+  const started = await p.start({
+    cwd: task.cwd,
+    autoApprove: settings!.get().approvalMode === "auto",
+    extraArgs: agentExtraArgs(),
+  });
+  try {
+    store?.rename(started.id, task.title);
+  } catch {
+    /* ignore */
+  }
+  void p.prompt(started.id, task.prompt).catch((err) => console.error("schedule prompt failed", err));
+}
+
+async function tickSchedules(): Promise<void> {
+  const now = Date.now();
+  for (const task of settings!.get().schedules ?? []) {
+    if (!scheduleDue(task, now)) continue;
+    const updated = (settings!.get().schedules ?? []).map((t) =>
+      t.id === task.id ? { ...t, lastRunAt: new Date().toISOString() } : t,
+    );
+    settings!.save({ schedules: updated });
+    try {
+      await runScheduleTask(task);
+    } catch (err) {
+      console.error("schedule run failed", err);
+    }
+  }
+}
+
+let modelPricingCache: { at: number; rows: { selector: string; input: number; output: number; cacheRead: number }[] } | null = null;
+
+/** 从 omp models 目录读取每个模型的单价（元 / 百万 token） */
+function loadModelPricing(): Promise<{ selector: string; input: number; output: number; cacheRead: number }[]> {
+  if (modelPricingCache && Date.now() - modelPricingCache.at < 5 * 60_000) {
+    return Promise.resolve(modelPricingCache.rows);
+  }
+  const candidates = ["omp", join(process.env.LOCALAPPDATA ?? "", "omp", "omp.exe")];
+  const run = (bin: string) =>
+    new Promise<string>((resolve, reject) => {
+      execFile(bin, ["models", "ls", "--json"], { timeout: 20_000, windowsHide: true }, (err, stdout) => {
+        if (err) reject(err);
+        else resolve(String(stdout));
+      });
+    });
+  return (async () => {
+    for (const bin of candidates) {
+      try {
+        const raw = await run(bin);
+        const json = JSON.parse(raw) as { models?: any[] };
+        const rows = (json.models ?? []).map((m) => ({
+          selector: String(m.selector ?? ""),
+          input: Number(m.cost?.input ?? 0),
+          output: Number(m.cost?.output ?? 0),
+          cacheRead: Number(m.cost?.cacheRead ?? 0),
+        }));
+        modelPricingCache = { at: Date.now(), rows };
+        return rows;
+      } catch {
+        /* 尝试下一个 */
+      }
+    }
+    return [];
+  })();
+}
+
+function extractBalance(value: unknown): { amount?: number; currency?: string } {
+  const seen = new Set<unknown>();
+  const walk = (node: unknown, depth: number): { amount?: number; currency?: string } => {
+    if (!node || depth > 5 || typeof node !== "object" || seen.has(node)) return {};
+    seen.add(node);
+    const obj = node as Record<string, unknown>;
+    const currency = typeof obj.currency === "string" ? obj.currency : undefined;
+    for (const key of ["total_balance", "balance", "remaining", "remain", "credits", "total", "quota", "available"]) {
+      const v = obj[key];
+      if (typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v))) {
+        return { amount: Number(v), currency };
+      }
+    }
+    for (const v of Object.values(obj)) {
+      const found = walk(v, depth + 1);
+      if (found.amount !== undefined) return { ...found, currency: found.currency ?? currency };
+    }
+    return { currency };
+  };
+  return walk(value, 0);
+}
+
+async function providerBalance(provider: string, baseUrl: string, apiKey: string, customUrl?: string) {
+  const tryJson = async (url: string) => {
+    const res = await fetch(url, {
+      headers: { authorization: `Bearer ${apiKey}`, accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) throw new Error("非 JSON");
+    return JSON.parse(text);
+  };
+
+  if (provider === "deepseek") {
+    const data = await tryJson("https://api.deepseek.com/user/balance");
+    const info = (data as any)?.balance_infos?.[0];
+    if (info) return { ok: true, amount: Number(info.total_balance), currency: String(info.currency ?? "CNY") };
+    const got = extractBalance(data);
+    return { ok: got.amount !== undefined, amount: got.amount, currency: got.currency ?? "CNY" };
+  }
+
+  // 通用 /v1/usage（兼容 ccs-yiai 这类中转）
+  if (!customUrl) {
+    const usageUrl = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1/usage`;
+    try {
+      const data: any = await tryJson(usageUrl);
+      const remaining = data?.remaining ?? data?.quota?.remaining ?? data?.balance;
+      if (remaining !== undefined && remaining !== null) {
+        const totalCost = data?.usage?.total?.actual_cost ?? data?.usage?.total?.cost;
+        const todayCost = data?.usage?.today?.actual_cost ?? data?.usage?.today?.cost;
+        const detail = totalCost !== undefined
+          ? `累计 $${Number(totalCost).toFixed(2)}${todayCost !== undefined ? ` · 今日 $${Number(todayCost).toFixed(2)}` : ""}`
+          : undefined;
+        const models = Array.isArray(data?.model_stats)
+          ? data.model_stats.map((m: any) => ({
+              model: String(m.model ?? ""),
+              requests: Number(m.requests ?? 0),
+              cost: Number(m.actual_cost ?? m.cost ?? 0),
+              tokens: Number(m.total_tokens ?? 0),
+            }))
+          : undefined;
+        return {
+          ok: true,
+          amount: Number(remaining),
+          currency: String(data?.unit ?? data?.quota?.unit ?? "USD"),
+          detail,
+          models,
+        };
+      }
+    } catch {
+      /* 落到通用兜底 */
+    }
+  }
+
+  const url = customUrl || `${baseUrl.replace(/\/+$/, "")}/user/balance`;
+  try {
+    const data = await tryJson(url);
+    const got = extractBalance(data);
+    return { ok: got.amount !== undefined, amount: got.amount, currency: got.currency };
+  } catch (err: any) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+}
+
+async function listProviderBalances() {
+  const cfg = settings!.get();
+  const providers = readOmpProviders();
+  const rows: { provider: string; ok: boolean; amount?: number; currency?: string; error?: string; detail?: string; models?: { model: string; requests: number; cost: number; tokens: number }[] }[] = [];
+  if (cfg.deepseekApiKey) {
+    rows.push({ provider: "deepseek", ...(await providerBalance("deepseek", "https://api.deepseek.com", cfg.deepseekApiKey)) });
+  }
+  for (const [name, p] of Object.entries(providers)) {
+    rows.push({
+      provider: name,
+      ...(await providerBalance(name, p.baseUrl, p.apiKey, (cfg.providerBalanceUrls ?? {})[name])),
+    });
+  }
+  return rows;
+}
+
 function emit(event: AgentEvent): void {
   if (event.t === "ready") {
     currentSessionId = event.sessionId;
@@ -133,10 +563,19 @@ function emit(event: AgentEvent): void {
     notifyTurnDone();
     if (currentSessionId) {
       const meta = store?.get(currentSessionId);
-      remote?.notify("OT", "当前任务完成", currentSessionId);
+      { const body = lastReplyText(currentSessionId) || "当前任务完成"; remote?.notify(`OT · ${meta?.title ?? "任务完成"}`, body, currentSessionId); void sendPush(`OT · ${meta?.title ?? "任务完成"}`, body, currentSessionId ?? undefined); }
       const u = event.usage;
       const tok = (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) + (u?.outputTokens ?? 0);
-      store?.addTurnStats(currentSessionId, tok, lastUsageCost, lastUsageUsed, lastUsageSize);
+      store?.addTurnStats(
+        currentSessionId,
+        tok,
+        lastUsageCost,
+        lastUsageUsed,
+        lastUsageSize,
+        (u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0) > 0
+          ? ((u?.cachedReadTokens ?? 0) / ((u?.inputTokens ?? 0) + (u?.cachedReadTokens ?? 0))) * 100
+          : 0,
+      );
     }
     if (githubIntent && settings?.get().githubAutoUpload) void autoUpload(sessionCwd);
   }
@@ -275,6 +714,24 @@ function createWindow(): void {
     },
   });
 
+  // 浏览器级缩放（Ctrl +/-）会和设置里的界面缩放叠加，导致"调不回来"；
+  // 这里锁死页面缩放，只保留设置里的 CSS 缩放。
+  try {
+    win.webContents.setZoomLevel(0);
+    win.webContents.setVisualZoomLevelLimits(1, 1);
+  } catch {
+    /* ignore */
+  }
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.control && ["+", "=", "-", "0"].includes(input.key)) {
+      event.preventDefault();
+      try {
+        win?.webContents.setZoomLevel(0);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
   if (HEADLESS) {
     win.hide();
     win.setSkipTaskbar(true);
@@ -577,6 +1034,24 @@ async function autoUpload(cwd: string): Promise<void> {
     }
     if (!gitRun(root, ["status", "--porcelain"]).trim()) return;
     gitRun(root, ["add", "-A"]);
+    // 内容级密钥扫描：文件名规则之外，再扫 staged diff
+    try {
+      const diff = gitRun(root, ["diff", "--cached"]);
+      const secretPatterns = [
+        /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+        /\bsk-[A-Za-z0-9_-]{20,}/,
+        /\bghp_[A-Za-z0-9]{30,}/,
+        /\bAKIA[0-9A-Z]{16}\b/,
+        /xox[baprs]-[A-Za-z0-9-]{10,}/,
+      ];
+      if (secretPatterns.some((re) => re.test(diff))) {
+        try { gitRun(root, ["reset"]); } catch { /* ignore */ }
+        emit({ t: "note", text: "已拦截自动上传：暂存的改动里疑似包含密钥/私钥，请先移除再上传。" });
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
     if (settings?.get().githubBlockSecrets) {
       const staged = gitRun(root, ["diff", "--cached", "--name-only"]).split(/\r?\n/).filter(Boolean);
       const hits = sensitiveHits(staged);
@@ -597,25 +1072,8 @@ async function autoUpload(cwd: string): Promise<void> {
       hasRemote = false;
     }
     if (!hasRemote) {
-      const cred = ghCredential();
-      if (!cred) {
-        emit({ t: "note", text: "自动上传失败：本机没有 GitHub 凭据（git credential）" });
-        return;
-      }
-      const name = (root.split(/[\\/]/).filter(Boolean).pop() ?? "ot-project").toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
-      const res = await fetch("https://api.github.com/user/repos", {
-        method: "POST",
-        headers: { Authorization: `token ${cred.token}`, Accept: "application/vnd.github+json", "User-Agent": "ot" },
-        body: JSON.stringify({ name, private: false, description: "Created by OT auto-upload" }),
-      });
-      if (!res.ok && res.status !== 422) {
-        emit({ t: "note", text: `自动上传失败：创建仓库 HTTP ${res.status}` });
-        return;
-      }
-      gitRun(root, ["remote", "add", "origin", `https://github.com/${cred.user}/${name}.git`]);
-      gitRun(root, ["branch", "-M", "main"]);
-      gitRun(root, ["push", "-u", "origin", "main"]);
-      emit({ t: "note", text: `已上传到 https://github.com/${cred.user}/${name}` });
+      emit({ t: "note", text: "自动上传已跳过：这个目录没有 origin 远端。请先 git remote add 指向你自己的仓库（OT 不会自动创建公开仓库）。" });
+      return;
     } else {
       gitRun(root, ["push"]);
       emit({ t: "note", text: "已自动提交并推送改动" });
@@ -920,6 +1378,7 @@ app.on("second-instance", () => {
     });
 
     ipcMain.handle("checkpoint:restore", (_e, sessionId: string, turnId: string) => restoreCheckpoint(sessionId, turnId));
+    ipcMain.handle("checkpoint:restore-range", (_e, sessionId: string, turnIds: string[]) => restoreCheckpointRange(sessionId, turnIds));
 
     ipcMain.handle("fs:reveal", (_e, path: string) => {
       shell.showItemInFolder(path);
@@ -1121,8 +1580,10 @@ app.on("second-instance", () => {
               void session.prompt(text, []).catch((err) => console.error("active prompt failed", err));
               return { ok: true };
             }
-            handlePoolEvent(id, { t: "user", text });
             const p = ensurePool();
+            if (p.isBusy(id)) return { ok: false, error: "会话正在运行，稍后再发" };
+            bgFailures.delete(id);
+            handlePoolEvent(id, { t: "user", text });
             if (!p.has(id)) {
               const meta = store?.get(id);
               if (!meta) return { ok: false, error: "会话不存在" };
@@ -1143,6 +1604,11 @@ app.on("second-instance", () => {
         },
         history: (id: string) => store?.read(id) ?? [],
         onClients: (count: number) => win?.webContents.send("remote:clients", count),
+        onThinkingDone: (text: string) => {
+          void translateText(text).then((zh) => {
+            if (zh) remote?.pushThinkingZh(zh);
+          });
+        },
         prompt: async (text: string, images?: { data: string; mimeType: string; name?: string }[]) => {
           try {
             emit({ t: "user", text });
@@ -1174,6 +1640,59 @@ app.on("second-instance", () => {
     );
 
     ipcMain.handle("balance:get", () => fetchBalance());
+    ipcMain.handle("push:test", () => sendPush("OT 测试", "这是一条测试推送，点开应该进入 OT", currentSessionId ?? undefined));
+    ipcMain.handle("think:translate", (_e, text: string) => translateText(String(text ?? "")));
+    ipcMain.handle("health:check", () => healthCheck());
+    ipcMain.handle("models:pricing", () => loadModelPricing());
+    ipcMain.handle("balance:providers", () => listProviderBalances());
+    ipcMain.handle("sessions:search", (_e, q: string) => store?.searchContent(String(q ?? "")) ?? []);
+    ipcMain.handle("schedules:save", (_e, task: ScheduleTask) => {
+      const list = settings!.get().schedules ?? [];
+      const exists = list.some((t) => t.id === task.id);
+      if (!exists && !task.lastRunAt) task = { ...task, lastRunAt: new Date().toISOString() };
+      const next = exists ? list.map((t) => (t.id === task.id ? task : t)) : [...list, task];
+      return settings!.save({ schedules: next }).schedules;
+    });
+    ipcMain.handle("schedules:delete", (_e, id: string) => {
+      const next = (settings!.get().schedules ?? []).filter((t) => t.id !== id);
+      return settings!.save({ schedules: next }).schedules;
+    });
+    ipcMain.handle("tasks:list", () => {
+      const rows = pool?.snapshot() ?? [];
+      return rows.map((r) => ({
+        ...r,
+        title: store?.get(r.id)?.title ?? "后台会话",
+        cwd: store?.get(r.id)?.cwd ?? "",
+        status: bgPermissions.has(r.id) ? "permission" : bgFailures.has(r.id) ? "failed" : r.busy ? "running" : "idle",
+      }));
+    });
+    ipcMain.handle("tasks:cancel", (_e, id: string) => {
+      pool?.cancel(id);
+      pool?.dispose(id);
+      bgPermissions.delete(id);
+      bgFailures.delete(id);
+      return true;
+    });
+    ipcMain.handle("tasks:open", (_e, id: string) => {
+      // 运行中的任务不强行 dispose，避免直接把后台工作杀掉
+      if (pool?.isBusy(id)) return null;
+      pool?.dispose(id);
+      bgPermissions.delete(id);
+      bgFailures.delete(id);
+      return store?.get(id) ?? null;
+    });
+    ipcMain.handle("schedules:run", async (_e, id: string) => {
+      const task = (settings!.get().schedules ?? []).find((t) => t.id === id);
+      if (!task) return false;
+      settings!.save({ schedules: (settings!.get().schedules ?? []).map((t) => (t.id === id ? { ...t, lastRunAt: new Date().toISOString() } : t)) });
+      await runScheduleTask(task);
+      return true;
+    });
+    setInterval(() => void tickSchedules(), 30_000);
+    setInterval(() => {
+      const dropped = pool?.sweep(30 * 60 * 1000) ?? [];
+      if (dropped.length) console.log("回收后台会话:", dropped.join(", "));
+    }, 5 * 60 * 1000);
 
     ipcMain.handle("net:lan", () => {
       const port = settings?.get().remotePort ?? 7788;
@@ -1295,8 +1814,10 @@ app.on("second-instance", () => {
               void session.prompt(text, []).catch((err) => console.error("active prompt failed", err));
               return { ok: true };
             }
-            handlePoolEvent(id, { t: "user", text });
             const p = ensurePool();
+            if (p.isBusy(id)) return { ok: false, error: "会话正在运行，稍后再发" };
+            bgFailures.delete(id);
+            handlePoolEvent(id, { t: "user", text });
             if (!p.has(id)) {
               const meta = store?.get(id);
               if (!meta) return { ok: false, error: "会话不存在" };
@@ -1317,6 +1838,11 @@ app.on("second-instance", () => {
         },
         history: (id: string) => store?.read(id) ?? [],
         onClients: (count: number) => win?.webContents.send("remote:clients", count),
+        onThinkingDone: (text: string) => {
+          void translateText(text).then((zh) => {
+            if (zh) remote?.pushThinkingZh(zh);
+          });
+        },
         permission: (id: string, optionId: string) => void session?.respondPermission(id, optionId),
         cancel: () => void session?.cancel(),
         snapshot: () => ({
@@ -1353,6 +1879,11 @@ app.on("second-instance", () => {
         tunnel?.stop();
       }
       return remoteStatus();
+    });
+    ipcMain.handle("agent:permission-bg", async (_e, sessionId: string, toolCallId: string, optionId: string) => {
+      pool?.respondPermission(sessionId, toolCallId, optionId);
+      bgPermissions.delete(sessionId);
+      return true;
     });
     ipcMain.handle("agent:permission", async (_e, toolCallId: string, optionId: string) => {
       await session?.respondPermission(toolCallId, optionId);
@@ -1427,6 +1958,43 @@ app.on("second-instance", () => {
     disposeSession();
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent, SessionMeta } from "../shared/types.js";
 
@@ -28,18 +28,60 @@ export class SessionStore {
         this.index = { sessions: [] };
       }
     }
+    // 索引缺失或为空但会话文件还在时，从 JSONL 重建，避免"会话全没了"
+    if (this.index.sessions.length === 0) this.rebuildIndex();
+  }
+
+  /** 扫描 sessions 目录，按 JSONL 内容重建索引（只做最小还原） */
+  private rebuildIndex(): void {
+    let files: string[] = [];
+    try {
+      files = readdirSync(this.dir).filter((f) => f.endsWith(".jsonl"));
+    } catch {
+      return;
+    }
+    const sessions: SessionMeta[] = [];
+    for (const file of files) {
+      const id = file.replace(/\.jsonl$/, "");
+      try {
+        const lines = readFileSync(join(this.dir, file), "utf8").split("\n");
+        let title = "新会话";
+        let cwd = "";
+        let agentId = "omp";
+        let createdAt = new Date().toISOString();
+        for (const line of lines) {
+          if (!line) continue;
+          const ev = JSON.parse(line);
+          if (ev.t === "ready") {
+            cwd = String(ev.cwd ?? cwd);
+            agentId = String(ev.agentId ?? agentId);
+          }
+          if (ev.t === "user" && title === "新会话" && ev.text) title = String(ev.text).slice(0, 48);
+        }
+        const stat = statSync(join(this.dir, file));
+        sessions.push({ id, agentId, cwd, title, createdAt, updatedAt: stat.mtime.toISOString() });
+      } catch {
+        /* 坏文件跳过 */
+      }
+    }
+    if (sessions.length) {
+      this.index = { sessions };
+      this.flush();
+    }
   }
 
   private flush(): void {
     this.index.sessions.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    writeFileSync(this.indexPath, JSON.stringify(this.index, null, 2), "utf8");
+    const tmp = this.indexPath + ".tmp";
+    writeFileSync(tmp, JSON.stringify(this.index, null, 2), "utf8");
+    renameSync(tmp, this.indexPath);
   }
 
   list(): SessionMeta[] {
     return [...this.index.sessions].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }
 
-  addTurnStats(id: string, tokens: number, cost: number, used = 0, size = 0): void {
+  addTurnStats(id: string, tokens: number, cost: number, used = 0, size = 0, cachePct = 0): void {
     const meta = this.get(id);
     if (!meta) return;
     const prev = meta.stats ?? { tokens: 0, cost: 0, turns: 0 };
@@ -49,6 +91,7 @@ export class SessionStore {
       turns: prev.turns + 1,
       used: used || prev.used,
       size: size || prev.size,
+      cachePct: cachePct > 0 ? cachePct : (prev.cachePct ?? 0),
     };
     this.flush();
   }
@@ -158,7 +201,42 @@ export class SessionStore {
     }
     return hits.sort((a, b) => b.count - a.count).slice(0, 30);
   }
+  /** 全文搜索会话内容（user/text 事件），返回命中片段 */
+  searchContent(query: string, limit = 40): { id: string; title: string; cwd: string; role: string; snippet: string }[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const out: { id: string; title: string; cwd: string; role: string; snippet: string }[] = [];
+    for (const meta of this.list()) {
+      if (out.length >= limit) break;
+      let text = "";
+      try {
+        text = readFileSync(this.file(meta.id), "utf8");
+      } catch {
+        continue;
+      }
+      for (const line of text.split("\n")) {
+        if (!line || out.length >= limit) continue;
+        if (!line.toLowerCase().includes(q)) continue;
+        let ev: any;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const body = String(ev?.text ?? "");
+        if (!body || !body.toLowerCase().includes(q)) continue;
+        const at = body.toLowerCase().indexOf(q);
+        out.push({
+          id: meta.id,
+          title: meta.title || "新会话",
+          cwd: meta.cwd,
+          role: ev.t,
+          snippet: body.slice(Math.max(0, at - 40), at + 90).replace(/\s+/g, " "),
+        });
+      }
+    }
+    return out;
+  }
 }
-
 
 

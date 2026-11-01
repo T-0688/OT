@@ -11,6 +11,7 @@ const api: RendererApi = {
   renameSession: (id: string, title: string) => ipcRenderer.invoke("agent:rename", id, title),
   deleteSession: (id: string) => ipcRenderer.invoke("agent:delete", id),
   searchMessages: (q: string) => ipcRenderer.invoke("agent:search", q),
+  respondPermissionBg: (sessionId: string, toolCallId: string, optionId: string) => ipcRenderer.invoke("agent:permission-bg", sessionId, toolCallId, optionId),
   respondPermission: (toolCallId: string, optionId: string) =>
     ipcRenderer.invoke("agent:permission", toolCallId, optionId),
   setConfig: (configId: string, value: string) => ipcRenderer.invoke("agent:config", configId, value),
@@ -33,6 +34,18 @@ const api: RendererApi = {
   readFile: (path: string) => ipcRenderer.invoke("fs:read", path),
   addCustomModel: (input: unknown) => ipcRenderer.invoke("models:addCustom", input),
   getBalance: () => ipcRenderer.invoke("balance:get"),
+  testPush: () => ipcRenderer.invoke("push:test"),
+  translateThinking: (text: string) => ipcRenderer.invoke("think:translate", text),
+  healthCheck: () => ipcRenderer.invoke("health:check"),
+  modelPricing: () => ipcRenderer.invoke("models:pricing"),
+  providerBalances: () => ipcRenderer.invoke("balance:providers"),
+  searchSessions: (q: string) => ipcRenderer.invoke("sessions:search", q),
+  saveSchedule: (task: any) => ipcRenderer.invoke("schedules:save", task),
+  deleteSchedule: (id: string) => ipcRenderer.invoke("schedules:delete", id),
+  runSchedule: (id: string) => ipcRenderer.invoke("schedules:run", id),
+  listTasks: () => ipcRenderer.invoke("tasks:list"),
+  cancelTask: (id: string) => ipcRenderer.invoke("tasks:cancel", id),
+  openTask: (id: string) => ipcRenderer.invoke("tasks:open", id),
   deepseekModels: () => ipcRenderer.invoke("models:deepseek"),
   lanUrls: () => ipcRenderer.invoke("net:lan"),
   uploadNow: () => ipcRenderer.invoke("github:uploadNow"),
@@ -60,13 +73,14 @@ const api: RendererApi = {
     ipcRenderer.on("remote:clients", handler as never);
     return () => ipcRenderer.removeListener("remote:clients", handler as never);
   },
-  onRemoteTunnel: (cb: (status: unknown) => void) => {
-    const handler = (_e: unknown, status: unknown) => cb(status);
+  onRemoteTunnel: (cb: (url: string) => void) => {
+    const handler = (_e: unknown, status: unknown) => cb(String(status ?? ""));
     ipcRenderer.on("remote:tunnel", handler as never);
     return () => ipcRenderer.removeListener("remote:tunnel", handler as never);
   },
   saveCheckpoint: (sessionId: string, turnId: string, path: string, oldText: string | null) =>
     ipcRenderer.invoke("checkpoint:save", sessionId, turnId, path, oldText),
+  restoreCheckpointRange: (sessionId: string, turnIds: string[]) => ipcRenderer.invoke("checkpoint:restore-range", sessionId, turnIds),
   restoreCheckpoint: (sessionId: string, turnId: string) => ipcRenderer.invoke("checkpoint:restore", sessionId, turnId),
   revealInFolder: (path: string) => ipcRenderer.invoke("fs:reveal", path),
   openWith: (path: string) => ipcRenderer.invoke("fs:openWith", path),
@@ -79,6 +93,17 @@ const api: RendererApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
+
+
+
+
+
+
+
+
+
+
 
 
 

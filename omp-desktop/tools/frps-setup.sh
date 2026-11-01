@@ -3,7 +3,7 @@
 # 用法：上传到服务器后执行  bash frps-setup.sh
 set -euo pipefail
 
-TOKEN="beb58f0b943f91e7c2daa687"
+TOKEN="${TOKEN:-$(head -c 32 /dev/urandom | tr -dc 'a-f0-9' | head -c 24)}"
 BIND_PORT=7000
 VERSION="0.71.1"
 DIR="/usr/local/frp"
@@ -66,3 +66,4 @@ printf '\n\033[32m完成。\033[0m\n'
 printf '  服务器: 120.26.20.154:%s\n' "$BIND_PORT"
 printf '  token : %s\n' "$TOKEN"
 printf '  下一步: 告诉我一声，我在电脑上连过来\n\n'
+

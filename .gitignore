@@ -3,6 +3,7 @@
 !/omp-desktop/
 !/omp-mobile/
 !/mobile/
+!/ot/
 !/README.md
 !/omp-desktop-plan.md
 !/.gitignore
@@ -28,3 +29,11 @@ omp-desktop/dsh-theme-rule.css
 omp-desktop/dsh-theme-rules.css
 
 
+
+# 密钥与发布产物（绝不入库）
+omp-mobile/keystore-pass.txt
+omp-mobile/*.jks
+omp-mobile/app/release/
+*.apk
+ot/dist/
+ot/target/

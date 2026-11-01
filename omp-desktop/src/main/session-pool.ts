@@ -10,6 +10,7 @@ type Emit = (ev: AgentEvent) => void;
 export class SessionPool {
   private map = new Map<string, AgentSession>();
   private busy = new Set<string>();
+  private lastSeen = new Map<string, number>();
 
   constructor(
     private createSession: (onEvent: Emit) => AgentSession,
@@ -46,6 +47,7 @@ export class SessionPool {
     let bound = "";
     const session = this.createSession((ev) => {
       if (ev.t === "ready") bound = ev.sessionId;
+      this.lastSeen.set(ev.t === "ready" ? ev.sessionId : bound, Date.now());
       this.onEvent(bound, ev);
     });
     session.setAutoApprove(opts.autoApprove);
@@ -53,6 +55,7 @@ export class SessionPool {
     const id = await session.start(opts.cwd);
     this.map.set(id, session);
     if (bound) this.map.set(bound, session);
+    this.lastSeen.set(id, Date.now());
     this.onBound(id, session);
     opts.onId?.(id);
     return { id, session };
@@ -71,6 +74,7 @@ export class SessionPool {
     if (opts.extraArgs?.length) session.setExtraArgs(opts.extraArgs);
     await session.resume(opts.id, opts.cwd);
     this.map.set(opts.id, session);
+    this.lastSeen.set(opts.id, Date.now());
     this.onBound(opts.id, session);
     return session;
   }
@@ -78,6 +82,7 @@ export class SessionPool {
   async prompt(id: string, text: string): Promise<void> {
     const session = this.map.get(id);
     if (!session) throw new Error(`会话 ${id} 不在后台池里`);
+    if (this.busy.has(id)) throw new Error("会话正在运行，稍后再发");
     this.busy.add(id);
     try {
       await session.prompt(text, []);
@@ -92,6 +97,34 @@ export class SessionPool {
 
   respondPermission(id: string, toolCallId: string, optionId: string): void {
     this.map.get(id)?.respondPermission(toolCallId, optionId);
+  }
+
+  /** 回收闲置太久、且当前没在跑的后台会话 */
+  sweep(idleMs: number): string[] {
+    const now = Date.now();
+    const dropped: string[] = [];
+    for (const [id, session] of this.map) {
+      if (this.busy.has(id)) continue;
+      const seen = this.lastSeen.get(id) ?? 0;
+      if (now - seen < idleMs) continue;
+      try {
+        session.dispose();
+      } catch {
+        /* ignore */
+      }
+      this.map.delete(id);
+      this.lastSeen.delete(id);
+      dropped.push(id);
+    }
+    return dropped;
+  }
+
+  snapshot(): { id: string; busy: boolean; lastSeen: number }[] {
+    return [...this.map.keys()].map((id) => ({
+      id,
+      busy: this.busy.has(id),
+      lastSeen: this.lastSeen.get(id) ?? 0,
+    }));
   }
 
   dispose(id: string): void {
@@ -109,3 +142,6 @@ export class SessionPool {
     for (const id of [...this.map.keys()]) this.dispose(id);
   }
 }
+
+
+

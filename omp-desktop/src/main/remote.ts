@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ export type RemoteHooks = {
   snapshot: () => { id: string; title: string; cwd: string; status: string; agent: string; model: string };
   history: (id: string) => AgentEvent[];
   onClients?: (count: number) => void;
+  onThinkingDone?: (text: string) => void;
 };
 
 type ChatLine = { role: "user" | "agent" | "tool" | "note"; text: string };
@@ -33,6 +35,7 @@ export class RemoteServer {
   private wss: WebSocketServer | null = null;
   private history: ChatLine[] = [];
   private clients = new Set<WebSocket>();
+  private thinking = "";
   status = "idle";
   currentId = "";
   readonly token: string;
@@ -61,6 +64,10 @@ export class RemoteServer {
     }
   }
 
+  pushThinkingZh(text: string): void {
+    if (text) this.broadcast({ t: "thinking_zh", text });
+  }
+
   /** 把桌面侧的事件转成手机能看的内容 */
   ingest(event: AgentEvent): void {
     switch (event.t) {
@@ -75,6 +82,12 @@ export class RemoteServer {
         if (last && last.role === "agent") last.text += event.text;
         else this.push({ role: "agent", text: event.text });
         this.broadcast({ t: "text", text: event.text });
+        break;
+      }
+      case "thinking": {
+        if (!event.text) break;
+        this.thinking += event.text;
+        this.broadcast({ t: "thinking", text: event.text });
         break;
       }
       case "tool_start":
@@ -94,9 +107,14 @@ export class RemoteServer {
           options: event.options,
         });
         break;
-      case "turn_end":
+      case "turn_end": {
         this.broadcast({ t: "turn_end" });
         this.status = "idle";
+        const t = this.thinking.trim();
+        this.thinking = "";
+        if (t) this.hooks.onThinkingDone?.(t);
+        break;
+      }
         break;
       case "ready":
         this.history = [];
@@ -165,7 +183,7 @@ export class RemoteServer {
         JSON.stringify({
           name: "OT",
           short_name: "OT",
-          start_url: `/?token=${this.token}`,
+          start_url: "/",
           scope: "/",
           display: "standalone",
           background_color: "#151517",
@@ -328,8 +346,8 @@ export class RemoteServer {
         if (msg.type === "sessions") {
           socket.send(JSON.stringify({ t: "sessions", list: this.hooks.sessions(), current: this.currentId }));
         }
-        if (msg.type === "start" && msg.cwd) {
-          void this.hooks.start(String(msg.cwd), msg.agentId).then((r) => {
+        if (msg.type === "start" && (msg as any).cwd) {
+          void this.hooks.start(String((msg as any).cwd), (msg as any).agentId).then((r) => {
             socket.send(JSON.stringify({ t: "start_result", ...r }));
           });
         }
@@ -367,6 +385,12 @@ export class RemoteServer {
 export function remotePageSize(): number {
   return esc(PAGE).length;
 }
+
+
+
+
+
+
 
 
 

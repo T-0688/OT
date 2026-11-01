@@ -106,7 +106,7 @@ export class AgentSession {
     const stream = acp.ndJsonStream(output, input);
 
     const app = acp
-      .client({ name: "omp-desktop", version: "0.1.0" })
+      .client({ name: "omp-desktop" })
       .onNotification("session/update", ({ params }: any) => this.handleUpdate(params))
       .onRequest("session/request_permission", async ({ params }: any) => this.handlePermission(params))
       .onRequest("fs/read_text_file", async ({ params }: any) => {
@@ -334,6 +334,8 @@ function collectDiff(content: any): ToolDiff | undefined {
   }
   return undefined;
 }
+
+
 
 
 

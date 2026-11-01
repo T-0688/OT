@@ -15,12 +15,23 @@ import type {
   ToolDiff,
   WeWallpaper,
   RemoteStatus,
+  ConfigChoice,
 } from "../../shared/types.js";
 import { compactDiff, diffLines, type DiffLine } from "./diff.js";
+import {
+  entryOf,
+  loadStore,
+  NEW_SESSION_KEY,
+  persistStore,
+  withDraft,
+  withQueue,
+  type ComposerStore,
+  type QueuedMessage,
+} from "./composer-state.js";
 
 type Item =
   | { kind: "user"; id: string; text: string; images?: ImagePart[] }
-  | { kind: "assistant"; id: string; text: string; thinking: string; streaming: boolean }
+  | { kind: "assistant"; id: string; text: string; thinking: string; thinkingZh?: string; streaming: boolean }
   | {
       kind: "tool";
       id: string;
@@ -31,9 +42,9 @@ type Item =
       diff?: ToolDiff;
     }
   | { kind: "note"; id: string; text: string }
-  | { kind: "turn"; id: string; ms: number; tokens: number; at: number; userText?: string };
+  | { kind: "turn"; id: string; ms: number; tokens: number; at: number; userText?: string; stopReason?: string };
 
-type PendingPermission = { id: string; title: string; options: PermissionChoice[] };
+type PendingPermission = { id: string; title: string; options: PermissionChoice[]; sessionId?: string };
 type Status = "connecting" | "ready" | "running" | "exited" | "error";
 type PaletteCommand = { id: string; label: string; hint?: string; run: () => void };
 
@@ -168,6 +179,8 @@ function timeLabel(iso: string): string {  const d = new Date(iso);
 
 export default function App() {
   const [items, setItems] = useState<Item[]>([]);
+  const itemsRef = useRef<Item[]>([]);
+  itemsRef.current = items;
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState<Status>("connecting");
@@ -189,8 +202,17 @@ export default function App() {
   const [agentId, setAgentId] = useState("omp");
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [query, setQuery] = useState("");
+  const [contentHits, setContentHits] = useState<{ id: string; title: string; cwd: string; role: string; snippet: string }[]>([]);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [tasks, setTasks] = useState<{ id: string; busy: boolean; lastSeen: number; title: string; cwd: string; status?: string }[]>([]);
+  const [atBottom, setAtBottom] = useState(true);
+  const [modelPrices, setModelPrices] = useState<{ selector: string; input: number; output: number; cacheRead: number }[]>([]);
+  const [taskNotice, setTaskNotice] = useState("");
   const [attachments, setAttachments] = useState<ImagePart[]>([]);
   const [files, setFiles] = useState<string[]>([]);
+  const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [approval, setApproval] = useState<"ask" | "auto">("ask");
   const [plusOpen, setPlusOpen] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -203,6 +225,7 @@ export default function App() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [failedText, setFailedText] = useState<string | null>(null);
+  const [configNotice, setConfigNotice] = useState("");
 
   const [bgMode, setBgMode] = useState<"solid" | "wallpaper" | "custom" | "we">(
     () => (localStorage.getItem("omp.bg") as "solid" | "wallpaper" | "custom" | "we") || "solid",
@@ -239,10 +262,69 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const scrollGuard = useRef(0);
   const started = useRef(false);
   const lastUser = useRef("");
   const pending = useRef({ text: "", thinking: "", timer: 0 });
   const turnStart = useRef(Date.now());
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [composerStore, setComposerStore] = useState<ComposerStore>(() => loadStore());
+  const storeRef = useRef(composerStore);
+  storeRef.current = composerStore;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const pendingQueueRef = useRef(pendingQueue);
+  pendingQueueRef.current = pendingQueue;
+  const queuePausedRef = useRef(queuePaused);
+  queuePausedRef.current = queuePaused;
+  const runningRef = useRef(running);
+  const lastEventAt = useRef(Date.now());
+  runningRef.current = running;
+  const composerKey = sessionId ?? NEW_SESSION_KEY;
+  const composerKeyRef = useRef(composerKey);
+  const [flushTick, setFlushTick] = useState(0);
+
+  // 切换到另一个会话：先存下当前输入，再载入目标会话的草稿与队列
+  useEffect(() => {
+    const prevKey = composerKeyRef.current;
+    if (prevKey === composerKey) return;
+    const saved = withDraft(storeRef.current, prevKey, draftRef.current, filesRef.current);
+    storeRef.current = saved;
+    setComposerStore(saved);
+    persistStore(saved);
+    composerKeyRef.current = composerKey;
+    const entry = entryOf(saved, composerKey);
+    setDraft(entry.draft);
+    setFiles(entry.files);
+    setPendingQueue(entry.queue);
+    setQueuePaused(false);
+  }, [composerKey]);
+
+  useEffect(() => {
+    const next = withDraft(storeRef.current, composerKeyRef.current, draft, files);
+    if (next === storeRef.current) return;
+    storeRef.current = next;
+    setComposerStore(next);
+    persistStore(next);
+  }, [draft, files]);
+
+  useEffect(() => {
+    const next = withQueue(storeRef.current, composerKeyRef.current, pendingQueue);
+    if (next === storeRef.current) return;
+    storeRef.current = next;
+    setComposerStore(next);
+    persistStore(next);
+  }, [pendingQueue]);
+
+  // 输入框随内容增高，最多 180px 后内部滚动
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [draft]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -305,6 +387,7 @@ export default function App() {
 
   const handleEvent = useCallback(
     (ev: AgentEvent) => {
+      lastEventAt.current = Date.now();
       switch (ev.t) {
         case "ready":
           setSessionId(ev.sessionId);
@@ -375,6 +458,22 @@ export default function App() {
               cachePct: inp + cached > 0 ? (cached / (inp + cached)) * 100 : prev.cachePct,
             }));
           }
+          // 这一轮结束：把最后一条思考翻成中文（展示在收起的折叠块里）
+          {
+            const list = itemsRef.current;
+            for (let i = list.length - 1; i >= 0; i--) {
+              const it = list[i];
+              if (it.kind === "assistant" && it.thinking && !it.thinkingZh) {
+                const raw = it.thinking;
+                const idx = i;
+                void window.api.translateThinking(raw).then((zh) => {
+                  if (!zh) return;
+                  setItems((cur) => cur.map((x, j) => (j === idx ? { ...x, thinkingZh: zh } : x)));
+                });
+                break;
+              }
+            }
+          }
           void refreshSessions();
           setTotalTokens((n) => n + inp + cached + out);
           setItems((prev) => [
@@ -386,15 +485,34 @@ export default function App() {
               tokens: inp + cached + out,
               at: Date.now(),
               userText: lastUser.current,
+              stopReason: ev.stopReason,
             },
           ]);
+          if (ev.stopReason === "end_turn") setFlushTick((t) => t + 1);
+          else if (pendingQueueRef.current.length) setQueuePaused(true);
           break;
         }
         case "error":
+          {
+            const list = itemsRef.current;
+            for (let k = list.length - 1; k >= 0; k--) {
+              const it = list[k];
+              if (it.kind === "assistant" && it.thinking && !it.thinkingZh) {
+                const raw = it.thinking;
+                const idx = k;
+                void window.api.translateThinking(raw).then((zh) => {
+                  if (!zh) return;
+                  setItems((cur) => cur.map((x, j) => (j === idx ? { ...x, thinkingZh: zh } : x)));
+                });
+                break;
+              }
+            }
+          }
           flush();
           setStatus("error");
           setRunning(false);
           setFailedText(lastUser.current || null);
+          if (pendingQueueRef.current.length) setQueuePaused(true);
           break;
         case "log":
           setLogs((prev) => [...prev.slice(-80), ev.text]);
@@ -403,6 +521,7 @@ export default function App() {
           flush();
           setStatus("exited");
           setRunning(false);
+          if (pendingQueueRef.current.length) setQueuePaused(true);
           break;
       }
       if (ev.t !== "text" && ev.t !== "thinking") {
@@ -525,20 +644,18 @@ export default function App() {
 
   const onScroll = () => {
     const el = scrollRef.current;
+    if (Date.now() < scrollGuard.current) return;
     if (!el) return;
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setAtBottom(stickToBottom.current);
   };
 
-  const send = async (text?: string, images?: ImagePart[]) => {
-    const extra = files.length ? `\n\n[附带的文件]\n${files.map((f) => `- ${f}`).join("\n")}` : "";
-    const content = ((text ?? draft).trim() + extra).trim();
-    const imgs = images ?? attachments;
-    if ((!content && imgs.length === 0) || running || !sessionId) return;
-    if (!text) {
-      setDraft("");
-      setAttachments([]);
-      setFiles([]);
-    }
+  /** 真正把一条消息交给 agent；返回是否已经发出。 */
+  const dispatch = async (text: string, filePaths: string[], imgs: ImagePart[]): Promise<boolean> => {
+    if (runningRef.current || !sessionIdRef.current) return false;
+    const extra = filePaths.length ? `\n\n[附带的文件]\n${filePaths.map((f) => `- ${f}`).join("\n")}` : "";
+    const content = (text.trim() + extra).trim();
+    if (!content && imgs.length === 0) return false;
     lastUser.current = content;
     turnStart.current = Date.now();
     liveChars.current = 0;
@@ -554,8 +671,57 @@ export default function App() {
       setRunning(false);
       setStatus("error");
       setFailedText(content);
+      return false;
+    }
+    return true;
+  };
+
+  const send = async (text?: string, images?: ImagePart[]) => {
+    const imgs = images ?? attachments;
+    if (text !== undefined) {
+      // 重试等外部调用：输入区维持原样
+      await dispatch(text, files, imgs);
+      return;
+    }
+    const textNow = draft;
+    const filesNow = files;
+    if (!textNow.trim() && !filesNow.length && !imgs.length) return;
+    setDraft("");
+    setAttachments([]);
+    setFiles([]);
+    const ok = await dispatch(textNow, filesNow, imgs);
+    if (!ok) {
+      // 没发出去就把输入还给你，避免丢内容
+      setDraft(textNow);
+      setFiles(filesNow);
+      setAttachments(imgs);
     }
   };
+
+  /** 本轮运行中：把当前输入排进待发队列。 */
+  const enqueueDraft = () => {
+    const text = draft.trim();
+    if (!text && !files.length) return;
+    setPendingQueue((cur) => [...cur, { id: `q_${Date.now()}_${cur.length}`, text, files: [...files] }].slice(0, 20));
+    setDraft("");
+    setFiles([]);
+    setQueuePaused(false);
+  };
+
+  // 本轮正常跑完后按顺序发出下一条；停止或出错会暂停，避免误发
+  useEffect(() => {
+    if (!flushTick) return;
+    if (runningRef.current || queuePausedRef.current || !sessionIdRef.current) return;
+    const next = pendingQueueRef.current[0];
+    if (!next) return;
+    setPendingQueue((cur) => cur.filter((item) => item.id !== next.id));
+    void (async () => {
+      const ok = await dispatch(next.text, next.files, []);
+      if (ok) return;
+      setPendingQueue((cur) => [next, ...cur.filter((item) => item.id !== next.id)]);
+      setQueuePaused(true);
+    })();
+  }, [flushTick]);
 
   const chooseWallpaper = async () => {
     const picked = await window.api.pickImage();
@@ -627,6 +793,10 @@ export default function App() {
   const removeSession = async (meta: SessionMeta) => {
     if (!window.confirm(`删除会话「${meta.title || "新会话"}」？\n只删本地记录，不影响 agent 自己的会话文件。`)) return;
     await window.api.deleteSession(meta.id);
+    if ((appSettings?.pinnedSessions ?? []).includes(meta.id)) {
+      const saved = await window.api.saveSettings({ pinnedSessions: (appSettings?.pinnedSessions ?? []).filter((x) => x !== meta.id) });
+      setAppSettings(saved);
+    }
     if (meta.id === sessionId) {
       setItems([]);
       setSessionId(null);
@@ -640,13 +810,15 @@ export default function App() {
     flush();
     setRunning(false);
     setStatus("ready");
+    if (pendingQueueRef.current.length) setQueuePaused(true);
   };
 
   const choose = async (option: PermissionChoice) => {
     if (!permission) return;
     const current = permission;
     setPermission(null);
-    await window.api.respondPermission(current.id, option.optionId);
+    if (current.sessionId) await window.api.respondPermissionBg(current.sessionId, current.id, option.optionId);
+    else await window.api.respondPermission(current.id, option.optionId);
   };
 
   const newSession = async (nextAgent = agentId, nextCwd?: string) => {
@@ -705,7 +877,7 @@ export default function App() {
     const cost = Math.max(st?.cost ?? 0, rCost);
     const restoredUsage = { used, size, cost: cost || undefined };
     setUsage(restoredUsage);
-    setStats({});
+    setStats({ cachePct: st?.cachePct ?? 0 });
     setConfigOptions(configs);
     setAgentId(agent);
     setSessionId(meta.id);
@@ -737,8 +909,19 @@ export default function App() {
   };
 
   const setConfig = async (id: string, value: string) => {
-    setConfigOptions((prev) => prev.map((o) => (o.id === id ? { ...o, currentValue: value } : o)));
-    await window.api.setConfig(id, value);
+    const target = sessionIdRef.current;
+    setConfigNotice("");
+    try {
+      const result = await window.api.setConfig(id, value);
+      if (target !== sessionIdRef.current) return;
+      if (!result.ok) {
+        setConfigNotice(`切换失败：${result.error || "Agent 未接受此设置"}`);
+        return;
+      }
+      setConfigOptions((prev) => prev.map((o) => (o.id === id ? { ...o, currentValue: value } : o)));
+    } catch (err) {
+      if (target === sessionIdRef.current) setConfigNotice(`切换失败：${String(err?.message ?? err)}`);
+    }
   };
 
   const updateSettings = async (patch: Partial<AppSettings>) => {
@@ -758,7 +941,7 @@ export default function App() {
         if (it.kind === "user") return `## 你\n\n${it.text}`;
         if (it.kind === "assistant") return `## agent\n\n${it.text}`;
         if (it.kind === "tool") return `\`\`\`\n${it.title}\n${it.text}\n\`\`\``;
-        return it.text;
+        return it.kind === "note" ? it.text : "";
       })
       .join("\n\n");
     try {
@@ -775,10 +958,69 @@ export default function App() {
   );
   const sessionTitle = items.find((i) => i.kind === "user")?.text.slice(0, 48) || "新会话";
   const modelLabel =
-    models?.options?.find((o) => o.value === models.currentValue)?.name ?? String(models?.currentValue ?? "");
+    (() => {
+      const cur = String(models?.currentValue ?? "");
+      const name = models?.options?.find((o) => o.value === cur)?.name ?? cur;
+      const prefix = cur.includes("/") ? cur.split("/")[0] + "/" : "";
+      return prefix + name;
+    })();
+
+  // 运行中显示"在干什么"，而不是笼统的 Thinking
+  const progressLabel = useMemo(() => {
+    if (!running) return "";
+    if (permission) return `等待授权：${permission.title}`;
+    let steps = 0;
+    let current = "";
+    for (const item of items) {
+      if (item.kind !== "tool") continue;
+      steps++;
+      if (item.status === "in_progress" || item.status === "pending") current = item.title;
+      else if (item.status === "failed") current = `失败：${item.title}`;
+    }
+    if (current) return current;
+    return steps > 0 ? `已执行 ${steps} 步` : "思考中…";
+  }, [items, running, permission]);
   const detectedAgents = useMemo(() => agents.filter((a) => a.detected || a.id === agentId), [agents, agentId]);
   const hitMap = useMemo(() => new Map(hits.map((h) => [h.id, h])), [hits]);
+  useEffect(() => {
+    void window.api.modelPricing().then(setModelPrices).catch(() => setModelPrices([]));
+  }, []);
 
+  useEffect(() => {
+    const load = () => {
+      void window.api.listTasks().then(setTasks).catch(() => setTasks([]));
+    };
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 看门狗：90 秒没有任何事件就自动停止，避免无限“运行中”
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!runningRef.current) return;
+      if (Date.now() - lastEventAt.current < 90_000) return;
+      void window.api.cancel();
+      setRunning(false);
+      setStatus("error");
+      setItems((prev) => [
+        ...prev,
+        { kind: "note", id: `note-${Date.now()}`, text: "模型 90 秒没有响应，已自动停止。请换模型或重试。" },
+      ]);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setContentHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void window.api.searchSessions(q).then(setContentHits).catch(() => setContentHits([]));
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
   const filteredSessions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sessions;
@@ -837,13 +1079,14 @@ export default function App() {
   }, [items]);
   const modelOptions = useMemo(() => {
     const all = models?.options ?? [];
-    if (!officialModels || !officialModels.length) return all;
+    const withPrefix = (list: ConfigChoice[]) => list.map((o) => ({ ...o, name: o.value.includes("/") ? o.value.split("/")[0] + "/" + o.name : o.name }));
     const current = String(models?.currentValue ?? "");
-    return all.filter((o) => {
+    if (!officialModels || !officialModels.length) return withPrefix(all);
+    return withPrefix(all.filter((o) => {
       if (!o.value.startsWith("deepseek/")) return true;
       const id = o.value.slice("deepseek/".length);
       return officialModels.includes(id) || o.value === current;
-    });
+    }));
   }, [models?.options, models?.currentValue, officialModels]);
   const turnCount = useMemo(() => Math.max(items.filter((i) => i.kind === "turn").length, sessionTurnBase) + (running ? 1 : 0), [items, running, sessionTurnBase]);
   const ctxPct = usage.size ? Math.min(100, ((usage.used ?? 0) / usage.size) * 100) : 0;
@@ -857,17 +1100,19 @@ export default function App() {
   const cost = useMemo(() => {
     if (typeof usage.cost === "number" && usage.cost > 0) return usage.cost;
     if (sessionCost > 0) return sessionCost;
-    const pIn = appSettings?.priceIn ?? 0;
-    const pOut = appSettings?.priceOut ?? 0;
-    const pCache = appSettings?.priceCacheIn || pIn * 0.1;
-    const factor = appSettings?.deepseekPricing && isOffPeak ? (appSettings?.offPeakFactor ?? 0.5) : 1;
+    const selector = String(models?.currentValue ?? "");
+    const price = modelPrices.find((p) => p.selector === selector);
+    const pIn = price?.input ?? appSettings?.priceIn ?? 0;
+    const pOut = price?.output ?? appSettings?.priceOut ?? 0;
+    const pCache = price?.cacheRead ?? (appSettings?.priceCacheIn || pIn * 0.1);
+    const factor = selector.startsWith("deepseek/") && appSettings?.deepseekPricing && isOffPeak ? (appSettings?.offPeakFactor ?? 0.5) : 1;
     const totalIn = stats.inputTokens ?? 0;
     const hitRate = Math.min(100, Math.max(0, stats.cachePct ?? 0)) / 100;
     const cachedTok = totalIn * hitRate;
     const missTok = totalIn - cachedTok;
     const outTok = stats.outputTokens ?? 0;
     return ((missTok * pIn + cachedTok * pCache + outTok * pOut) * factor) / 1_000_000;
-  }, [usage.cost, appSettings?.priceIn, appSettings?.priceOut, appSettings?.priceCacheIn, appSettings?.deepseekPricing, appSettings?.offPeakFactor, isOffPeak, stats.inputTokens, stats.outputTokens, stats.cachePct]);
+  }, [usage.cost, appSettings?.priceIn, appSettings?.priceOut, appSettings?.priceCacheIn, appSettings?.deepseekPricing, appSettings?.offPeakFactor, isOffPeak, stats.inputTokens, stats.outputTokens, stats.cachePct, modelPrices, models?.currentValue]);
   const rails = useMemo(() => {
     const map = new Map<number, { path: string; name: string }[]>();
     let current: { path: string; name: string }[] = [];
@@ -894,6 +1139,7 @@ export default function App() {
     return map;
   }, [items]);
   const groups = useMemo(() => {
+    const pinnedIds = new Set(appSettings?.pinnedSessions ?? []);
     const map = new Map<string, SessionMeta[]>();
     for (const s of filteredSessions) {
       const key = s.cwd || "（未指定目录）";
@@ -906,17 +1152,19 @@ export default function App() {
     for (const ws of workspaces) {
       if (seen.has(ws) || hiddenWorkspaces.includes(ws)) continue;
       seen.add(ws);
-      list.push({
-        key: ws,
-        cwd: ws,
-        name: ws.split(/[\\/]/).filter(Boolean).pop() || ws,
-        items: map.get(ws) ?? [],
-        pinned: true,
-      });
+      list.push({ key: ws, cwd: ws, name: ws.split(/[\\/]/).filter(Boolean).pop() || ws, items: map.get(ws) ?? [], pinned: true });
     }
     for (const [cwd, items] of map) {
       if (seen.has(cwd) || hiddenWorkspaces.includes(cwd)) continue;
       list.push({ key: cwd, cwd, name: cwd.split(/[\\/]/).filter(Boolean).pop() || cwd, items, pinned: false });
+    }
+    for (const group of list) {
+      group.items.sort((a, b) => {
+        const ap = pinnedIds.has(a.id) ? 1 : 0;
+        const bp = pinnedIds.has(b.id) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return a.updatedAt < b.updatedAt ? 1 : -1;
+      });
     }
     return list.sort((a, b) => {
       const at = a.items[0]?.updatedAt ?? "";
@@ -924,7 +1172,7 @@ export default function App() {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return at < bt ? 1 : -1;
     });
-  }, [filteredSessions, workspaces, hiddenWorkspaces]);
+  }, [filteredSessions, workspaces, hiddenWorkspaces, appSettings?.pinnedSessions]);
 
   useEffect(() => {
     const q = query.trim();
@@ -950,6 +1198,7 @@ export default function App() {
 
   const removeWorkspace = async (dir: string) => {
     const next = (appSettings?.workspaces ?? []).filter((w) => w !== dir);
+    const hidden = [...(appSettings?.hiddenWorkspaces ?? []), dir];
     const saved = await window.api.saveSettings({ workspaces: next, hiddenWorkspaces: hidden });
     setAppSettings(saved);
   };
@@ -1007,7 +1256,19 @@ export default function App() {
     setDraft(userText);
     setFailedText(null);
     setRunning(false);
+    const history = items
+      .slice(0, idx)
+      .filter((it) => it.kind === "user" || it.kind === "assistant")
+      .map((it) => `${it.kind === "user" ? "用户" : "助手"}：${(it as { text: string }).text}`)
+      .join("\n")
+      .slice(-6000);
     await window.api.start({ agentId, cwd });
+    if (history && userText) {
+      setDraft("");
+      await window.api.prompt(
+        `[以下是从另一个会话分叉过来的历史，供你了解上下文]\n${history}\n\n[请继续处理：]\n${userText}`,
+      );
+    }
   };
   const rollbackTurn = async (turnId: string) => {
     const idx = items.findIndex((i) => i.id === turnId);
@@ -1021,9 +1282,9 @@ export default function App() {
     }
     if (userIdx < 0) return;
     const text = items[userIdx].kind === "user" ? (items[userIdx] as { text: string }).text : "";
-    const checkpointTurnId = (items[userIdx] as { id: string }).id;
+    const rangeIds = items.slice(userIdx).filter((it) => it.kind === "user").map((it) => it.id);
     const restore = sessionIdRef.current
-      ? await window.api.restoreCheckpoint(sessionIdRef.current, checkpointTurnId)
+      ? await window.api.restoreCheckpointRange(sessionIdRef.current, rangeIds)
       : { restored: 0, removed: 0, failed: 0 };
     setItems(items.slice(0, userIdx));
     if (restore.restored || restore.removed || restore.failed) {
@@ -1032,7 +1293,7 @@ export default function App() {
         {
           kind: "note",
           id: `note-${Date.now()}`,
-          text: `已回退：恢复 ${restore.restored} 个文件${restore.removed ? `、删除 ${restore.removed} 个新建文件` : ""}${restore.failed ? `、${restore.failed} 个失败` : ""}`,
+          text: `已回退：恢复 ${restore.restored} 个文件${restore.removed ? `、删除 ${restore.removed} 个新建文件` : ""}${restore.failed ? `、${restore.failed} 个失败` : ""}（agent 上下文已重置，历史仅本地保留）`,
         },
       ]);
     }
@@ -1052,6 +1313,27 @@ export default function App() {
 
   const expandWs = (key: string) => setExpandedWs((prev) => new Set(prev).add(key));
 
+  const pinnedSet = new Set(appSettings?.pinnedSessions ?? []);
+  const togglePin = async (id: string) => {
+    const list = appSettings?.pinnedSessions ?? [];
+    const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+    const saved = await window.api.saveSettings({ pinnedSessions: next });
+    setAppSettings(saved);
+  };
+  const statusFor = (id: string): "" | "running" | "permission" | "failed" => {
+    if (id === sessionId) {
+      if (permission) return "permission";
+      if (running) return "running";
+      if (status === "error") return "failed";
+      return "";
+    }
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return "";
+    if (t.status === "permission") return "permission";
+    if (t.status === "failed") return "failed";
+    if (t.busy || t.status === "running") return "running";
+    return "";
+  };
   const renderSessionRow = (s: SessionMeta) => {
     const hit = hitMap.get(s.id);
     return (
@@ -1075,7 +1357,15 @@ export default function App() {
             onDoubleClick={() => setEditing({ id: s.id, title: s.title })}
             title={`${s.cwd}\n${s.agentId}\n双击重命名`}
           >
-            <div className="session-name">{s.title || "新会话"}</div>
+            <div className="session-name">
+              {s.title || "新会话"}
+              {(() => {
+                const st = statusFor(s.id);
+                if (!st) return null;
+                const label = st === "running" ? "运行中" : st === "permission" ? "待授权" : "失败";
+                return <span className={`sess-badge ${st}`}>{label}</span>;
+              })()}
+            </div>
             <div className="session-meta">
               {relTime(s.updatedAt)}
               {hit ? ` · ${hit.count} 条匹配` : ""}
@@ -1084,6 +1374,9 @@ export default function App() {
           </button>
         )}
         <div className="session-actions">
+          <button onClick={() => void togglePin(s.id)} title={pinnedSet.has(s.id) ? "取消置顶" : "置顶"}>
+            {pinnedSet.has(s.id) ? "★" : "☆"}
+          </button>
           <button onClick={() => setEditing({ id: s.id, title: s.title })} title="重命名">
             ✎
           </button>
@@ -1124,7 +1417,7 @@ export default function App() {
       { id: "skills", label: "打开技能面板", run: () => setView("skills") },
       { id: "settings", label: "打开设置", run: () => setView("settings") },
       { id: "copy", label: "复制整段对话（Markdown）", run: () => void copyTranscript() },
-      { id: "bottom", label: "滚动到底部", run: () => { stickToBottom.current = true; const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; } },
+      { id: "bottom", label: "滚动到底部", run: () => { scrollGuard.current = Date.now() + 600; stickToBottom.current = true; const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; setAtBottom(true); } },
     ];
     if (failedText) list.unshift({ id: "retry", label: "重试上一条", run: () => void send(failedText) });
     for (const a of detectedAgents) {
@@ -1163,7 +1456,6 @@ export default function App() {
         void newSession();
       } else if (e.key === "Escape") {
         setPaletteOpen(false);
-        setPermission(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1232,6 +1524,10 @@ export default function App() {
               <Icon name="chat" size={15} />
               会话
             </button>
+            <button className="nav-item" onClick={() => setTasksOpen(true)} title="后台任务">
+              <Icon name="fork" size={15} />
+              任务
+            </button>
 
           </div>
           {view === "chat" ? (
@@ -1269,9 +1565,30 @@ export default function App() {
                 {filteredSessions.length === 0 ? (
                   <div className="side-empty">{query ? "没有匹配的会话" : "还没有历史会话"}</div>
                 ) : null}
-                {groups.map((g) => {
+                {query.trim().length >= 2 && contentHits.length > 0 ? (
+                  <div className="side-hits">
+                    <div className="side-hits-head">内容匹配 · {contentHits.length}</div>
+                    {contentHits.slice(0, 8).map((h) => {
+                      const meta = sessions.find((x) => x.id === h.id);
+                      return (
+                        <button
+                          key={`${h.id}-${h.snippet.slice(0, 12)}-${Math.random()}`}
+                          className="side-hit"
+                          onClick={() => {
+                            if (meta) void openSession(meta);
+                          }}
+                          title={h.cwd}
+                        >
+                          <span className="side-hit-title">{h.title}</span>
+                          <span className="side-hit-snippet">{h.snippet}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}                {groups.map((g) => {
                   const open = !collapsedWs.has(g.key);
-                  const limit = expandedWs.has(g.key) ? g.items.length : 4;
+                  const pinnedCount = g.items.filter((x) => pinnedSet.has(x.id)).length;
+                  const limit = expandedWs.has(g.key) ? g.items.length : Math.max(4, pinnedCount);
                   return (
                     <div className="ws" key={g.key}>
                       <div
@@ -1340,7 +1657,7 @@ export default function App() {
             </div>
           )}
           <div className="side-bottom">
-            <span className="version">v1.36.0</span>
+            <span className="version">v1.75.0</span>
             <button
               className="foot-btn icon-only"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1358,6 +1675,40 @@ export default function App() {
             </button>
           </div>
         </aside>
+      {tasksOpen ? (
+        <div className="task-modal" onClick={() => setTasksOpen(false)}>
+          <div className="task-card" onClick={(e) => e.stopPropagation()}>
+            <div className="task-head">
+              <span>后台任务</span>
+              <button className="ghost" onClick={() => setTasksOpen(false)}>关闭</button>
+            </div>
+            {taskNotice ? <div className="task-notice" role="status">{taskNotice}</div> : null}
+            {tasks.length === 0 ? <div className="side-empty">没有正在运行的后台会话</div> : null}
+            {tasks.map((t) => (
+              <div className="task-row" key={t.id}>
+                <div className="task-main">
+                  <div className="task-title">{t.title}</div>
+                  <div className="task-sub">{t.cwd} · {t.busy ? "运行中" : "空闲"}</div>
+                </div>
+                <button className="ghost" onClick={async () => {
+                  setTaskNotice("");
+                  const meta = await window.api.openTask(t.id);
+                  if (!meta) {
+                    setTaskNotice("任务仍在运行，暂不切换会话；完成后可查看结果。");
+                    return;
+                  }
+                  setTasksOpen(false);
+                  void openSession(meta);
+                }}>查看</button>
+                <button className="ghost" onClick={async () => {
+                  await window.api.cancelTask(t.id);
+                  setTasks(await window.api.listTasks());
+                }}>停止</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="right">
       <header className="topbar">
@@ -1401,6 +1752,8 @@ export default function App() {
               onClearSessions={async () => {
                 if (!window.confirm("清空所有本地会话记录？\n（不影响 agent 自己的会话文件）")) return;
                 await window.api.clearSessions();
+                const cleared = await window.api.saveSettings({ pinnedSessions: [] });
+                setAppSettings(cleared);
                 setItems([]);
                 setSessionId(null);
                 await refreshSessions();
@@ -1416,7 +1769,7 @@ export default function App() {
               </p>
             </div>
           ) : (
-            items.map((item, i) => (
+            items.filter((item) => item.kind !== "tool" || appSettings?.showTools).map((item, i) => (
               <Fragment key={item.id}>
                 <Message item={item} onRollback={(id) => void rollbackTurn(id)} onFork={(id) => void forkTurn(id)} reasoning={appSettings?.reasoningDisplay ?? "summary"} />
                 {rails.get(i)?.length ? (
@@ -1428,6 +1781,20 @@ export default function App() {
               </Fragment>
             ))
           )}
+        {!atBottom && items.length > 0 ? (
+          <button
+            className="to-bottom"
+            onClick={() => {
+              scrollGuard.current = Date.now() + 600;
+              stickToBottom.current = true;
+              const el = scrollRef.current;
+              if (el) el.scrollTop = el.scrollHeight;
+              setAtBottom(true);
+            }}
+          >
+            ↓ 回到最新
+          </button>
+        ) : null}
         </main>
 
         {turnList.length > 1 ? (
@@ -1444,6 +1811,7 @@ export default function App() {
         ) : null}
 
       <footer className="composer-wrap">
+        {configNotice ? <div className="composer-notice" role="status">{configNotice}<button className="ghost" onClick={() => setConfigNotice("")}>关闭</button></div> : null}
         {failedText ? (
           <div className="retry-bar">
             <span>上一条失败了</span>
@@ -1492,9 +1860,37 @@ export default function App() {
         </div>
         <div className={`think-badge ${running ? "on" : ""}`}>
           <span className="think-orb" />
-          <span className="think-text">OT Thinking…</span>
+          <span className="think-text">{progressLabel || "OT Thinking…"}</span>
           {running ? <span className="think-time">{formatElapsed(elapsedSec)}</span> : null}
-        </div>        <div
+        </div>
+        {pendingQueue.length ? (
+          <div className="queue-bar">
+            <div className="queue-head">
+              <span>{queuePaused ? "待发（已暂停）" : "待发"}</span>
+              <span className="queue-count">{pendingQueue.length} 条</span>
+              <span className="spacer" />
+              <button className="ghost" onClick={() => setQueuePaused((v) => !v)}>{queuePaused ? "继续" : "暂停"}</button>
+              <button className="ghost" onClick={() => setPendingQueue([])}>清空</button>
+            </div>
+            {pendingQueue.map((item, i) => (
+              <div className="queue-item" key={item.id}>
+                <span className="queue-index">{i + 1}</span>
+                <textarea
+                  className="queue-text"
+                  value={item.text}
+                  rows={1}
+                  onChange={(e) =>
+                    setPendingQueue((cur) => cur.map((x) => (x.id === item.id ? { ...x, text: e.target.value } : x)))
+                  }
+                />
+                {item.files.length ? <span className="queue-files">{item.files.length} 个文件</span> : null}
+                <button className="ghost" onClick={() => setPendingQueue((cur) => cur.filter((x) => x.id !== item.id))} title="移除这条">
+                  移除
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}        <div
           className="composer"
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -1530,6 +1926,7 @@ export default function App() {
           ) : null}
 
           <textarea
+            ref={inputRef}
             className="composer-input"
             value={draft}
             placeholder={status === "ready" ? "发消息或创建任务，/ 调用指令，@ 文件或对话" : "等待会话就绪…"}
@@ -1541,6 +1938,11 @@ export default function App() {
               void addImages(pasted);
             }}
             onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                enqueueDraft();
+                return;
+              }
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 void send();
@@ -1674,9 +2076,19 @@ export default function App() {
                 />
               ) : null}
               {running ? (
-                <button className="send-icon stop" onClick={() => void stop()} title="停止">
-                  <Icon name="stop" size={14} />
-                </button>
+                <>
+                  <button
+                    className="send-icon queue"
+                    onClick={enqueueDraft}
+                    disabled={!draft.trim() && !files.length}
+                    title="加入待发（本轮结束后按顺序发送）"
+                  >
+                    <Icon name="plus" size={15} />
+                  </button>
+                  <button className="send-icon stop" onClick={() => void stop()} title="停止">
+                    <Icon name="stop" size={14} />
+                  </button>
+                </>
               ) : (
                 <button
                   className="send-icon"
@@ -1691,65 +2103,47 @@ export default function App() {
           </div>
         </div>
 
-        <div className="statusbar" data-live={liveSpeed} data-chars={liveChars.current}>
+        <div className="statusbar expanded">
           <span className={`state ${status}`}>
-            {status === "ready"
-              ? "就绪"
-              : status === "running"
-                ? "运行中"
-                : status === "connecting"
-                  ? "连接中"
-                  : status === "exited"
-                    ? "已退出"
-                    : "出错"}
+            {status === "ready" ? "就绪" : status === "running" ? "运行中" : status === "connecting" ? "连接中" : status === "exited" ? "已退出" : "出错"}
           </span>
-          {modelLabel ? <span className="stat model">{modelLabel}</span> : null}
           <span className="stat ring-stat" title={`上下文 ${fmtTokens(usage.used ?? 0)} / ${usage.size ? fmtTokens(usage.size) : "?"}`}>
             <svg width="16" height="16" viewBox="0 0 16 16" className="ctx-ring">
               <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" />
-              <circle
-                cx="8"
-                cy="8"
-                r="6.4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeDasharray={`${Math.min(100, ctxPct) * 0.402} 100`}
-                transform="rotate(-90 8 8)"
-              />
+              <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={`${Math.min(100, ctxPct) * 0.402} 100`} transform="rotate(-90 8 8)" />
             </svg>
-            {usage.size ? fmtTokens(usage.size) : "—"}
             <span className="muted">{ctxPct.toFixed(0)}%</span>
           </span>
+          <span className="stat" title="本次会话花费">
+            <MiniIcon kind="coin" /> ${cost.toFixed(4)}
+          </span>
           {running && liveSpeed > 0 ? (
-            <span className="stat live" title="实时输出速度（按字符估算）">
-              ~{liveSpeed >= 10 ? liveSpeed.toFixed(0) : liveSpeed.toFixed(1)} tok/s
+            <span className="stat live" title="实时输出速度">
+              <MiniIcon kind="bolt" /> ~{liveSpeed >= 10 ? liveSpeed.toFixed(0) : liveSpeed.toFixed(1)} tok/s
             </span>
           ) : stats.speed ? (
-            <span className="stat" title="本回合输出速度">
-              {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
+            <span className="stat" title="本回合速度">
+              <MiniIcon kind="bolt" /> {stats.speed >= 10 ? stats.speed.toFixed(0) : stats.speed.toFixed(1)} tok/s
             </span>
           ) : null}
-          {typeof stats.cachePct === "number" ? (
-            <span className="stat" title="缓存命中率">缓存 {stats.cachePct.toFixed(0)}%</span>
+          {(stats.cachePct ?? 0) > 0 ? (
+            <span className="stat" title="缓存命中率">
+              <MiniIcon kind="db" /> {stats.cachePct.toFixed(0)}%
+            </span>
           ) : null}
-          <span className="stat" title="累计消耗 tokens">
-            {fmtTokens(totalTokens)} tok
-          </span>
-          <span className="stat" title="会话轮次">
-            第 {turnCount} 轮
+          <span className="stat" title="会话累计">
+            <MiniIcon kind="sum" /> {fmtTokens(totalTokens)} tok · {turnCount} 轮
           </span>
           {appSettings?.deepseekPricing ? (
-            <span className={`stat peak ${isOffPeak ? "off" : ""}`} title="DeepSeek 峰谷计费：谷时按折扣价">
-              {isOffPeak ? "谷时" : "峰时"}
+            <span className="stat" title="DeepSeek 计费时段">
+              <MiniIcon kind="clock" /> {isOffPeak ? "谷时" : "峰时"}
             </span>
           ) : null}
-          <span className="stat" title="本次会话花费">
-            ${cost.toFixed(4)}
-          </span>
-          <span className="stat balance" title={balance.total != null ? "DeepSeek 账户余额（实时查询）" : "剩余额度＝初始余额－已花费（设置里可改）"}>
-            {balance.total != null ? `${balance.currency === "USD" ? "$" : "¥"}${balance.total.toFixed(2)}` : `$${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}`}
+          <span className="stat" title="余额">
+            <MiniIcon kind="wallet" />
+            {balance.total != null
+              ? `${balance.currency === "USD" ? "$" : "¥"}${balance.total.toFixed(2)}`
+              : `$${Math.max(0, (appSettings?.balanceStart ?? 0) - cost).toFixed(2)}`}
           </span>
           <span className="spacer" />
           <span className="stat muted">ACP · {agentId}</span>
@@ -1954,6 +2348,24 @@ export default function App() {
       ) : null}
     </div>
   );
+}
+
+function MiniIcon({ kind, size = 12 }: { kind: "bolt" | "db" | "sum" | "clock" | "wallet" | "coin"; size?: number }) {
+  const common = { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  switch (kind) {
+    case "bolt":
+      return <svg {...common}><path d="M9 2 4 9h3l-1 5 5-7H8l1-5Z" /></svg>;
+    case "db":
+      return <svg {...common}><ellipse cx="8" cy="4" rx="4.6" ry="1.8" /><path d="M3.4 4v8c0 1 2 1.8 4.6 1.8s4.6-.8 4.6-1.8V4" /><path d="M3.4 8c0 1 2 1.8 4.6 1.8S12.6 9 12.6 8" /></svg>;
+    case "sum":
+      return <svg {...common}><path d="M12 3H5l4 5-4 5h7" /></svg>;
+    case "clock":
+      return <svg {...common}><circle cx="8" cy="8" r="5.4" /><path d="M8 4.8V8l2.2 1.6" /></svg>;
+    case "wallet":
+      return <svg {...common}><rect x="2.6" y="4" width="10.8" height="8.4" rx="2" /><path d="M2.6 6.4h10.8" /><circle cx="11" cy="9.4" r="0.9" fill="currentColor" stroke="none" /></svg>;
+    default:
+      return <svg {...common}><circle cx="8" cy="8" r="5.4" /><path d="M10 6.2c-.5-.7-1.2-1-2-1-1.2 0-2 .6-2 1.5 0 1 1 1.2 2 1.5 1.1.3 2 .6 2 1.6 0 .9-.9 1.5-2 1.5-.9 0-1.7-.4-2.1-1.1" /></svg>;
+  }
 }
 
 function Icon({ name, size = 15 }: { name: string; size?: number }) {
@@ -2193,6 +2605,53 @@ function FileRail({
     </div>
   );
 }
+function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      className="copy-btn"
+      title={label}
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+          setDone(true);
+          setTimeout(() => setDone(false), 1200);
+        } catch {
+          /* 复制失败不假装成功 */
+        }
+      }}
+    >
+      {done ? "已复制" : label}
+    </button>
+  );
+}
+
+function CodeBlock({ children }: { children?: React.ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const [done, setDone] = useState(false);
+  return (
+    <div className="code-wrap">
+      <button
+        className="code-copy"
+        onClick={async () => {
+          const text = ref.current?.innerText ?? "";
+          try {
+            await navigator.clipboard.writeText(text);
+            setDone(true);
+            setTimeout(() => setDone(false), 1200);
+          } catch {
+            /* ignore */
+          }
+        }}
+      >
+        {done ? "已复制" : "复制代码"}
+      </button>
+      <pre ref={ref}>{children}</pre>
+    </div>
+  );
+}
+
 function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: Item; onRollback?: (id: string) => void; onFork?: (id: string) => void; reasoning?: "full" | "summary" | "hidden" }) {
   if (item.kind === "user") {
     return (
@@ -2231,9 +2690,9 @@ function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: It
   if (item.kind === "turn") {
     const at = new Date(item.at);
     return (
-      <div className="turn-meta">
-        <span className="turn-check">✓</span>
-        <span>已完成</span>
+      <div className={`turn-meta ${item.stopReason === "cancelled" ? "cancelled" : item.stopReason && item.stopReason !== "end_turn" ? "interrupted" : "completed"}`}>
+        <span className="turn-check">{item.stopReason === "cancelled" ? "■" : item.stopReason && item.stopReason !== "end_turn" ? "!" : "✓"}</span>
+        <span>{item.stopReason === "cancelled" ? "已停止" : item.stopReason && item.stopReason !== "end_turn" ? "已中断" : "已完成"}</span>
         <span className="turn-sep">·</span>
         <span>用时 {fmtDuration(item.ms)}</span>
         <span className="turn-sep">·</span>
@@ -2256,14 +2715,17 @@ function Message({ item, onRollback, onFork, reasoning = "summary" }: { item: It
     return (
       <div className="msg assistant">
         {item.thinking && reasoning !== "hidden" ? (
-          <details className="thinking" open={reasoning === "full"}>
-            <summary>思考过程</summary>
-            <div className="thinking-body">{item.thinking}</div>
+          <details className="thinking" open={item.streaming}>
+            <summary>{item.streaming ? "思考中…" : "思考过程（中文）"}</summary>
+            <div className="thinking-body">{item.thinkingZh || item.thinking}</div>
           </details>
         ) : null}
         {item.text ? (
-          <div className="markdown">
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{item.text}</Markdown>
+          <div className="markdown-wrap">
+            <CopyButton text={item.text} />
+            <div className="markdown">
+              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={{ pre: CodeBlock }}>{item.text}</Markdown>
+            </div>
           </div>
         ) : null}
         {item.streaming && !item.text ? <div className="typing" /> : null}
@@ -2491,6 +2953,13 @@ function SettingsPanel({
   const [cmKey, setCmKey] = useState("");
   const [cmMsg, setCmMsg] = useState("");
   const [lanList, setLanList] = useState<string[]>([]);
+  const [pushMsg, setPushMsg] = useState("");
+  const [health, setHealth] = useState<Record<string, boolean> | null>(null);
+  const [balances, setBalances] = useState<{ provider: string; ok: boolean; amount?: number; currency?: string; error?: string; detail?: string; models?: { model: string; requests: number; cost: number; tokens: number }[] }[]>([]);
+  useEffect(() => {
+    void window.api.providerBalances().then(setBalances).catch(() => setBalances([]));
+  }, []);
+  const [schedForm, setSchedForm] = useState<{ title: string; cwd: string; prompt: string; everyMinutes: number } | null>(null);
   const [setTab, setSetTab] = useState<"general" | "models" | "balance" | "mobile" | "github" | "data">("general");
 
   useEffect(() => {
@@ -2504,7 +2973,7 @@ function SettingsPanel({
       setRemote(status);
       setTunnelOn(status.tunnelState !== "stopped");
     });
-    return window.api.onRemoteTunnel((status) => setRemote(status as RemoteStatus));
+    return window.api.onRemoteTunnel((status) => setRemote(status as unknown as RemoteStatus));
   }, []);
 
   if (!settings) return <div className="panel-empty">读取设置…</div>;
@@ -2838,6 +3307,26 @@ function SettingsPanel({
           <span className="set-hint">{settings.bgBlur ?? 12}px</span>
         </div>
         <div className="set-row">
+          <label>工具调用</label>
+          <div className="seg">
+            <button className={settings.showTools ? "on" : ""} onClick={() => onChange({ showTools: true })}>
+              显示
+            </button>
+            <button className={!settings.showTools ? "on" : ""} onClick={() => onChange({ showTools: false })}>
+              隐藏
+            </button>
+          </div>
+        </div>
+        <div className="set-row">
+          <label>思考翻译</label>
+          <div className="seg">
+            {[["local", "本地 Ollama"], ["omp", "OMP 模型"], ["deepseek", "DeepSeek"], ["off", "不翻译"]].map(([v, label]) => (
+              <button key={v} className={(settings.translateProvider ?? "local") === v ? "on" : ""} onClick={() => onChange({ translateProvider: v as any })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>        <div className="set-row">
           <label>界面缩放</label>
           <div className="seg">
             {[0.9, 1, 1.1].map((z) => (
@@ -2867,7 +3356,155 @@ function SettingsPanel({
             ))}
           </div>
         </div>
-        <div className="set-hint">同一 Wi-Fi 下把手机连接地址换成局域网地址，比走 Cloudflare 隧道快很多（长按手机顶部标题可修改）。</div>
+        <div className="set-row">
+          <label>定时任务</label>
+          <div className="set-inline">
+            <button className="ghost" onClick={() => setSchedForm({ title: "", cwd: settings.defaultCwd || "", prompt: "", everyMinutes: 60 })}>
+              添加
+            </button>
+            <span className="set-hint">到点自动在后台跑，结果走推送</span>
+          </div>
+        </div>
+        {(settings.schedules ?? []).map((t) => (
+          <div className="set-row" key={t.id}>
+            <label>{t.title}</label>
+            <span className="set-hint">
+              {t.everyMinutes > 0 ? `${t.everyMinutes} 分钟一次` : t.dailyAt ? `每天 ${t.dailyAt}` : "未设频率"} · {t.enabled ? "启用" : "停用"}
+            </span>
+            <div className="set-inline">
+              <button className="ghost" onClick={() => void window.api.runSchedule(t.id)}>
+                立即运行
+              </button>
+              <button className="ghost" onClick={async () => {
+                const next = (settings.schedules ?? []).map((x) => (x.id === t.id ? { ...x, enabled: !x.enabled } : x));
+                await onChange({ schedules: next } as any);
+              }}>
+                {t.enabled ? "停用" : "启用"}
+              </button>
+              <button className="ghost" onClick={async () => {
+                const next = await window.api.deleteSchedule(t.id);
+                await onChange({ schedules: next } as any);
+              }}>
+                删除
+              </button>
+            </div>
+          </div>
+        ))}
+        {schedForm ? (
+          <div className="set-row">
+            <label>新任务</label>
+            <div className="set-inline" style={{ flexWrap: "wrap", gap: 6 }}>
+              <input placeholder="名称" value={schedForm.title} onChange={(e) => setSchedForm({ ...schedForm, title: e.target.value })} />
+              <input placeholder="工作目录" value={schedForm.cwd} onChange={(e) => setSchedForm({ ...schedForm, cwd: e.target.value })} />
+              <input placeholder="提示词" value={schedForm.prompt} onChange={(e) => setSchedForm({ ...schedForm, prompt: e.target.value })} />
+              <input type="number" min={1} style={{ width: 70 }} value={schedForm.everyMinutes} onChange={(e) => setSchedForm({ ...schedForm, everyMinutes: Number(e.target.value) })} />
+              <button className="ghost" onClick={async () => {
+                if (!schedForm.title || !schedForm.cwd || !schedForm.prompt) return;
+                const next = await window.api.saveSchedule({
+                  id: `s-${Date.now()}`,
+                  title: schedForm.title,
+                  cwd: schedForm.cwd,
+                  prompt: schedForm.prompt,
+                  everyMinutes: schedForm.everyMinutes,
+                  dailyAt: "",
+                  enabled: true,
+                });
+                await onChange({ schedules: next } as any);
+                setSchedForm(null);
+              }}>
+                保存
+              </button>
+              <button className="ghost" onClick={() => setSchedForm(null)}>取消</button>
+            </div>
+          </div>
+        ) : null}        <div className="set-row">
+          <label>系统状态</label>
+          <div className="set-inline">
+            <button
+              className="ghost"
+              onClick={async () => {
+                setHealth(await window.api.healthCheck());
+              }}
+            >
+              检查
+            </button>
+            {health ? (
+              <span className="set-hint">
+                {Object.entries(health)
+                  .map(([k, v]) => `${k}${v ? "✓" : "×"}`)
+                  .join("  ")}
+              </span>
+            ) : null}
+          </div>
+        </div>        <div className="set-row">
+          <label>手机推送</label>
+          <div className="seg">
+            {[["off", "关闭"], ["ntfy", "ntfy"], ["bark", "Bark"]].map(([v, label]) => (
+              <button key={v} className={settings.pushProvider === v ? "on" : ""} onClick={() => onChange({ pushProvider: v as any })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {settings.pushProvider === "ntfy" ? (
+          <>
+            <div className="set-row">
+              <label>ntfy 服务器</label>
+              <input className="grow" value={settings.pushNtfyServer} onChange={(e) => onChange({ pushNtfyServer: e.target.value })} placeholder="https://ntfy.sh" />
+            </div>
+            <div className="set-row">
+              <label>ntfy 用户名</label>
+              <input className="grow" value={settings.pushNtfyUser} onChange={(e) => onChange({ pushNtfyUser: e.target.value })} placeholder="留空表示公共服务器" />
+            </div>
+            <div className="set-row">
+              <label>ntfy 密码</label>
+              <input className="grow" type="password" value={settings.pushNtfyPass} onChange={(e) => onChange({ pushNtfyPass: e.target.value })} placeholder="和手机端一致" />
+            </div>            <div className="set-row">
+              <label>ntfy 主题（topic）</label>
+              <input className="grow" value={settings.pushNtfyTopic} onChange={(e) => onChange({ pushNtfyTopic: e.target.value })} placeholder="随便起一个，手机订阅同名主题" />
+            </div>
+          </>
+        ) : null}
+        {settings.pushProvider === "bark" ? (
+          <div className="set-row">
+            <label>Bark 地址</label>
+            <input className="grow" value={settings.pushBarkUrl} onChange={(e) => onChange({ pushBarkUrl: e.target.value })} placeholder="https://api.day.app/你的key" />
+          </div>
+        ) : null}
+        {settings.pushProvider !== "off" ? (
+          <>
+          <div className="set-row">
+            <label>点击跳转</label>
+            <div className="seg">
+              <button className={settings.pushDeepLink !== false ? "on" : ""} onClick={() => onChange({ pushDeepLink: true })}>
+                直接打开 App
+              </button>
+              <button className={settings.pushDeepLink === false ? "on" : ""} onClick={() => onChange({ pushDeepLink: false })}>
+                打开浏览器
+              </button>
+            </div>
+          </div>
+            <div className="set-row">
+              <label>点击跳转地址</label>
+              <input className="grow" value={settings.pushClickBase} onChange={(e) => onChange({ pushClickBase: e.target.value })} placeholder="http://120.26.20.154:17788" />
+            </div>
+            <div className="set-row">
+              <label />
+              <div className="set-inline">
+                <button
+                  className="ghost"
+                  onClick={async () => {
+                    const r = await window.api.testPush();
+                    setPushMsg(r.ok ? "已发送，检查手机" : `失败：${r.error}`);
+                  }}
+                >
+                  发送测试推送
+                </button>
+                {pushMsg ? <span className="set-hint">{pushMsg}</span> : null}
+              </div>
+            </div>
+          </>
+        ) : null}        <div className="set-hint">同一 Wi-Fi 下把手机连接地址换成局域网地址，比走 Cloudflare 隧道快很多（长按手机顶部标题可修改）。</div>
         <div className="set-row">
           <label>开启远程服务</label>
           <label className="switch">
@@ -3008,8 +3645,44 @@ function SettingsPanel({
           </>
         ) : null}
         <div className="set-hint">
-          手机浏览器打开上面的地址即可查看会话、回消息、批权限。同一个 Wi‑Fi 用本机地址；要在外面用就打开 Cloudflare 隧道（首次会自动下载 cloudflared）。关掉软件服务就停。
+          手机浏览器打开上面的地址即可查看会话、回消息、批权限。同一个 Wi‑Fi 用本机地址；要在外面用走 frp 地址。Cloudflare 隧道已移除。
         </div>
+      </section>
+      <section className="set-group" data-cat="balance">
+        <h3>供应商余额</h3>
+        <div className="set-row">
+          <label>刷新</label>
+          <div className="set-inline">
+            <button className="ghost" onClick={async () => setBalances(await window.api.providerBalances())}>
+              查询全部
+            </button>
+            <span className="set-hint">DeepSeek 自动查询；其它供应商可填自定义余额接口</span>
+          </div>
+        </div>
+        {balances.map((b) => (
+          <div className="set-row" key={b.provider}>
+            <label>{b.provider}</label>
+            <span className="set-hint" style={{ minWidth: 90 }}>
+              {b.ok ? `${b.currency ?? ""} ${Number(b.amount ?? 0).toFixed(2)}${b.detail ? `（${b.detail}）` : ""}` : b.error ?? "不可用"}
+            </span>
+            {b.models?.length ? (
+              <div className="set-hint" style={{ flexBasis: "100%", paddingLeft: 8 }}>
+                {b.models
+                  .slice()
+                  .sort((x, y) => y.cost - x.cost)
+                  .slice(0, 6)
+                  .map((m) => `${m.model} $${m.cost.toFixed(2)}（${m.requests} 次）`)
+                  .join("  ·  ")}
+              </div>
+            ) : null}
+            <input
+              className="grow"
+              placeholder="自定义余额接口 URL（Bearer 供应商 key）"
+              value={settings.providerBalanceUrls?.[b.provider] ?? ""}
+              onChange={(e) => onChange({ providerBalanceUrls: { ...(settings.providerBalanceUrls ?? {}), [b.provider]: e.target.value } })}
+            />
+          </div>
+        ))}
       </section>
       <section className="set-group" data-cat="balance">
         <h3>计费</h3>
@@ -3147,6 +3820,75 @@ function SettingsPanel({
   );
 }
 export type { DiffLine };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

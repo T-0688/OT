@@ -53,6 +53,26 @@ export function restoreCheckpoint(
   return result;
 }
 
+/** 回退到某轮之前：从最新一轮往前逐轮回滚，确保多个轮次改同一文件时结果正确。 */
+export function restoreCheckpointRange(
+  sessionId: string,
+  turnIds: string[],
+): { restored: number; removed: number; failed: number } {
+  const total = { restored: 0, removed: 0, failed: 0 };
+  for (const turnId of [...turnIds].reverse()) {
+    const r = restoreCheckpoint(sessionId, turnId);
+    total.restored += r.restored;
+    total.removed += r.removed;
+    total.failed += r.failed;
+    try {
+      rmSync(turnDir(sessionId, turnId), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+  return total;
+}
+
 /** 会话删除时清掉它的快照。 */
 export function dropCheckpoints(sessionId: string): void {
   try {
@@ -61,3 +81,4 @@ export function dropCheckpoints(sessionId: string): void {
     /* ignore */
   }
 }
+
