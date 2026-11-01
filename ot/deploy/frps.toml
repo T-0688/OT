@@ -1,0 +1,19 @@
+# frps —— 跑在你的云服务器上
+# 下载：https://github.com/fatedier/frp/releases （linux_amd64）
+# 启动：./frps -c frps.toml
+
+bindPort = 7000
+
+# 客户端连上来要带 token，别留空
+auth.method = "token"
+auth.token = "改成你自己的长口令"
+
+# frp 自己的管理面板（可选，记得改密码）
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "改成你自己的密码"
+
+log.to = "/var/log/frps.log"
+log.level = "info"
+log.maxDays = 7

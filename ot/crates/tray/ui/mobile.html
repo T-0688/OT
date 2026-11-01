@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OT</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root { --line:#e6e8ea; --dim:#6b7280; --brand:#1f6f5c; --bg:#f7f8f8; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font:15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background:var(--bg); color:#111; padding-bottom: env(safe-area-inset-bottom); }
+  header { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--line); z-index:5; }
+  .bar { display:flex; align-items:center; gap:10px; padding:10px 14px; }
+  .logo { width:22px; height:22px; border-radius:50%; border:4px solid var(--brand); }
+  .bar b { font-size:16px; }
+  .status { margin-left:auto; font-size:12px; color:var(--dim); }
+  nav { display:flex; border-top:1px solid var(--line); }
+  nav button { flex:1; border:0; background:none; padding:10px 0; font-size:14px; color:var(--dim); }
+  nav button.on { color:var(--brand); font-weight:600; box-shadow: inset 0 -2px 0 var(--brand); }
+  main { padding:10px 12px 90px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+  .muted { color:var(--dim); font-size:12px; }
+  .title { font-weight:600; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:99px; background:#eef5f2; color:var(--brand); }
+  .num { font-variant-numeric: tabular-nums; }
+  .ev { margin:10px 0; }
+  .ev .who { font-size:11px; color:var(--dim); margin-bottom:2px; }
+  .user { background:#eef5f2; border-radius:10px; padding:8px 10px; white-space:pre-wrap; }
+  .agent { white-space:pre-wrap; }
+  .tool { font-family: ui-monospace, Consolas, monospace; font-size:12px; background:#f3f4f6;
+          border-radius:8px; padding:6px 8px; white-space:pre-wrap; color:#374151; }
+  .send { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
+          padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; gap:8px; }
+  .send input { flex:1; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:15px; }
+  .send button { border:0; border-radius:10px; background:var(--brand); color:#fff; padding:0 16px; font-size:15px; }
+  .send button:disabled { opacity:.5; }
+  .back { border:0; background:none; color:var(--brand); font-size:14px; padding:0; }
+  .err { color:#b91c1c; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="logo"></div><b>OT</b>
+    <span class="status" id="status">连接中…</span>
+  </div>
+  <nav>
+    <button data-tab="sessions" class="on">会话</button>
+    <button data-tab="costs">花费</button>
+    <button data-tab="quota">额度</button>
+  </nav>
+</header>
+
+<main id="main"></main>
+<div class="send" id="sendbar" style="display:none">
+  <input id="prompt" placeholder="发一条指令给这个会话…" autocomplete="off">
+  <button id="sendbtn">发送</button>
+</div>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const $ = (s) => document.querySelector(s);
+let tab = 'sessions';
+let curId = '';
+let timer = null;
+
+// token 来源优先级：URL > 上次保存的
+let TOKEN = qs.get('token') || localStorage.getItem('ot.token') || '';
+
+async function api(path, opt) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(path + sep + 'token=' + encodeURIComponent(TOKEN), opt);
+  if (res.status === 401) {
+    const e = new Error('token 不对');
+    e.needToken = true;
+    throw e;
+  }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+/// 没有 token 或 token 不对时弹一个输入框；存到 localStorage，下次不用再填。
+function askToken(bad) {
+  return new Promise((resolve) => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <div class="title">先填一次访问口令</div>
+        <div class="muted" style="margin:6px 0 10px">
+          在电脑上打开 <code>%LOCALAPPDATA%\\ot\\mobile-token.txt</code>，把里面的 32 位字符粘过来。
+          ${bad ? '<div class="err" style="margin-top:6px">刚才那个不对，再试一次</div>' : ''}
+        </div>
+        <input id="tk" placeholder="粘贴 token" autocomplete="off"
+               style="width:100%;padding:10px;border:1px solid #e6e8ea;border-radius:10px;font-size:15px">
+        <button id="tkok" class="back" style="margin-top:12px;background:#1f6f5c;color:#fff;
+                border-radius:10px;padding:10px 16px">保存并连接</button>
+      </div>`;
+    const input = $('#tk');
+    input.value = TOKEN;
+    input.focus();
+    const done = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      TOKEN = v;
+      localStorage.setItem('ot.token', v);
+      resolve();
+    };
+    $('#tkok').onclick = done;
+    input.onkeydown = (e) => { if (e.key === 'Enter') done(); };
+  });
+}
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const money = (usd, cny) => {
+  const a = usd > 0 ? '$' + usd.toFixed(2) : '';
+  const b = cny > 0 ? '¥' + cny.toFixed(2) : '';
+  return a && b ? a + ' + ' + b : (a || b || '—');
+};
+const rel = (iso) => {
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (d < 60) return '刚刚';
+  if (d < 3600) return Math.floor(d / 60) + ' 分钟前';
+  if (d < 86400) return Math.floor(d / 3600) + ' 小时前';
+  return Math.floor(d / 86400) + ' 天前';
+};
+function setStatus(t, bad) {
+  const el = $('#status');
+  el.textContent = t;
+  el.className = 'status' + (bad ? ' err' : '');
+}
+
+async function loadSessions() {
+  const d = await api('/api/sessions?limit=60');
+  const rows = d.sessions.map((s) => `
+    <div class="card" data-open="${esc(s.id)}">
+      <div class="row">
+        <span class="title">${esc(s.title || s.id.slice(0, 8))}</span>
+        ${s.running ? '<span class="pill">运行中</span>' : ''}
+      </div>
+      <div class="row muted" style="margin-top:6px">
+        <span>${esc(s.project || '—')} · ${rel(s.updated)}</span>
+        <span class="num">${money(s.cost, s.cost_cny)}</span>
+      </div>
+      <div class="row muted" style="margin-top:2px">
+        <span>${s.turns} 轮 · ${s.tools} 工具</span>
+        <span class="num">${s.tokens >= 1e6 ? (s.tokens/1e6).toFixed(1)+'M' : Math.round(s.tokens/1000)+'k'} token</span>
+      </div>
+    </div>`).join('');
+  $('#main').innerHTML = rows || '<div class="card muted">还没有会话</div>';
+  $('#main').querySelectorAll('[data-open]').forEach((el) => {
+    el.onclick = () => openSession(el.dataset.open);
+  });
+}
+
+async function openSession(id) {
+  curId = id;
+  $('#sendbar').style.display = 'flex';
+  await renderSession();
+  clearInterval(timer);
+  timer = setInterval(renderSession, 3000);
+}
+
+async function renderSession() {
+  if (!curId) return;
+  const d = await api('/api/session?id=' + encodeURIComponent(curId));
+  if (d.error) { $('#main').innerHTML = `<div class="card err">${esc(d.error)}</div>`; return; }
+  const evs = d.events.map((e) => {
+    if (e.role === 'user') return `<div class="ev"><div class="who">你</div><div class="user">${esc(e.text)}</div></div>`;
+    if (e.kind === 'tool') return `<div class="ev"><div class="tool">${esc(e.text)}</div></div>`;
+    return `<div class="ev"><div class="who">AI</div><div class="agent">${esc(e.text)}</div></div>`;
+  }).join('');
+  $('#main').innerHTML = `
+    <div class="card">
+      <button class="back" id="back">← 返回列表</button>
+      <div class="title" style="margin-top:6px">${esc(d.title || d.id.slice(0, 8))}</div>
+      <div class="muted">${esc(d.project || '')} · ${d.running ? '运行中' : '空闲'} · ${money(d.cost, d.cost_cny)}</div>
+    </div>
+    <div class="card">${evs || '<span class="muted">这个会话还没有内容</span>'}</div>`;
+  $('#back').onclick = () => {
+    clearInterval(timer);
+    $('#sendbar').style.display = 'none';
+    curId = '';
+    loadSessions();
+  };
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+$('#sendbtn').onclick = async () => {
+  const text = $('#prompt').value.trim();
+  if (!text || !curId) return;
+  const btn = $('#sendbtn');
+  btn.disabled = true;
+  btn.textContent = '发送中';
+  try {
+    const r = await api('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: curId, prompt: text }),
+    });
+    if (r.error) throw new Error(r.error);
+    $('#prompt').value = '';
+    await renderSession();
+  } catch (e) {
+    alert('发送失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送';
+  }
+};
+
+async function loadCosts() {
+  const d = await guarded(() => api('/api/costs?days=30'));
+  const bars = d.by_day.slice(0, 30).reverse();
+  const max = Math.max(...bars.map((b) => b.cost + b.cost_cny / 7), 0.0001);
+  $('#main').innerHTML = `
+    <div class="card">
+      <div class="row"><span class="muted">合计（${d.days} 天）</span>
+        <span class="title num">${money(d.total, d.total_cny)}</span></div>
+      <div class="row muted" style="margin-top:6px">
+        <span>${d.calls} 次调用</span>
+        <span>${(d.tokens/1e6).toFixed(1)}M token</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">按天</div>
+      ${bars.map((b) => {
+        const v = b.cost + b.cost_cny / 7;
+        const w = Math.max(2, (v / max) * 100);
+        return `<div style="margin:6px 0">
+          <div class="row muted"><span>${esc(b.key)}</span><span class="num">${money(b.cost, b.cost_cny)}</span></div>
+          <div style="height:6px;background:#eef0f1;border-radius:3px;margin-top:3px">
+            <div style="height:6px;width:${w}%;background:#1f6f5c;border-radius:3px"></div>
+          </div></div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">按模型</div>
+      ${d.by_model.slice(0, 12).map((b) => `
+        <div class="row" style="margin:6px 0">
+          <span>${esc(b.key)}</span><span class="num">${money(b.cost, b.cost_cny)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function loadQuota() {
+  const d = await guarded(() => api('/api/quota'));
+  $('#main').innerHTML = '<div class="card muted">读取中…</div>';
+  const rows = d.rows.map((r) => r.error
+    ? `<div class="row"><span>${esc(r.name)}</span><span class="muted">查不到</span></div>`
+    : `<div class="row" style="margin:8px 0">
+         <span>${esc(r.name)} ${r.current ? '<span class="pill">当前</span>' : ''}</span>
+         <span class="num title">${r.unit === 'CNY' ? '¥' : '$'}${Number(r.amount).toFixed(2)}</span>
+       </div>`).join('');
+  $('#main').innerHTML = `<div class="card">${rows || '<span class="muted">没有可查的供应商</span>'}</div>`;
+}
+
+document.querySelectorAll('nav button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+    tab = b.dataset.tab;
+    clearInterval(timer);
+    $('#sendbar').style.display = 'none';
+    curId = '';
+    if (tab === 'sessions') loadSessions();
+    if (tab === 'costs') loadCosts();
+    if (tab === 'quota') loadQuota();
+  };
+});
+
+/// 401 就再问一次 token，然后重试。
+async function guarded(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!e.needToken) throw e;
+    await askToken(true);
+    return await fn();
+  }
+}
+
+async function boot() {
+  while (true) {
+    try {
+      setStatus('连接中…');
+      await loadSessions();
+      setStatus('已连接');
+      return;
+    } catch (e) {
+      if (e.needToken) {
+        setStatus('需要口令', true);
+        await askToken(!!TOKEN);
+        continue;
+      }
+      setStatus('连不上：' + e.message, true);
+      return;
+    }
+  }
+}
+boot();
+
+// 注册 service worker：浏览器/手机才会给出"安装到主屏幕"
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+</script>
+</body>
+</html>

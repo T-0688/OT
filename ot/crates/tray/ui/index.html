@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OT</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f7f8fa;
+    --line: #e5e7eb;
+    --text: #1b1f24;
+    --dim: #6b7280;
+    --accent: #0f766e;
+    --warn: #b45309;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.55 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; gap: 22px; align-items: baseline;
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+  }
+  .brand { color: var(--accent); font-weight: 700; letter-spacing: .1em; font-size: 15px; }
+  .stat { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+  .stat b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--dim); font-size: 11px; }
+  .spacer { margin-left: auto; }
+  nav { display: flex; gap: 4px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); }
+  nav button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 7px 14px; font: inherit; color: var(--dim); cursor: pointer;
+  }
+  nav button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  main { flex: 1; overflow: hidden; }
+  .page { display: none; height: 100%; }
+  .page.on { display: flex; }
+  .col { display: flex; flex-direction: column; min-width: 0; height: 100%; flex: 1 1 auto; }
+  .toolbar { display: flex; gap: 10px; padding: 10px 18px; align-items: center; border-bottom: 1px solid var(--line); }
+  .toolbar label { color: var(--dim); font-size: 11px; }
+  select, input[type=text], input[type=number] {
+    background: #fff; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 8px; font: inherit;
+  }
+  input:focus, select:focus { outline: 2px solid rgba(15,118,110,.2); border-color: var(--accent); }
+  button.act {
+    background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; font: inherit; cursor: pointer;
+  }
+  button.act:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { color: #fff; opacity: .9; }
+  .scroll { overflow: auto; flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  thead th { position: sticky; top: 0; background: var(--panel); color: var(--dim); font-weight: 500; font-size: 11px; z-index: 1; }
+  tbody tr:hover td { background: #f3f7f6; }
+  tbody tr.sel td { background: #e8f4f2; }
+  td.title { white-space: normal; max-width: 360px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 5px rgba(15,118,110,.5); }
+  .src { color: var(--dim); font-size: 11px; }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  .detail { flex: 0 0 380px; width: 380px; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .detail .head { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .detail .head h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  .kv { color: var(--dim); font-size: 11px; }
+  .turn { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .turn .meta { color: var(--dim); font-size: 11px; margin-bottom: 4px; }
+  .turn .you { margin: 2px 0 6px; padding-left: 8px; border-left: 3px solid var(--accent); }
+  .turn .ai { margin: 4px 0; color: #333; white-space: pre-wrap; }
+  .turn .tool { color: var(--dim); font-family: Consolas, monospace; font-size: 11px; }
+  .turn .tool.fail { color: var(--bad); }
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 18px 4px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .card .k { color: var(--dim); font-size: 11px; }
+  .card .v { font-size: 19px; font-variant-numeric: tabular-nums; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 10px 18px 18px; overflow: auto; }
+  .grid3 h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+  .banner { margin: 12px 18px 0; padding: 8px 12px; border-radius: 8px; background: #fff8e6; color: #7c4a03; font-size: 12px; }
+  .banner.ok { background: #ecfdf5; color: #065f46; }
+  .modal { position: fixed; inset: 0; background: rgba(20,24,30,.35); display: none; align-items: center; justify-content: center; z-index: 20; }
+  .modal.on { display: flex; }
+  .modal-box { background: #fff; border-radius: 12px; padding: 18px 20px; width: 520px; box-shadow: 0 18px 50px rgba(0,0,0,.22); display: flex; flex-direction: column; gap: 12px; }
+  .modal-box h3 { margin: 0; font-size: 15px; }
+  .modal-box label { display: flex; flex-direction: column; gap: 5px; color: var(--dim); font-size: 11px; }
+  .modal-box input, .modal-box textarea { width: 100%; }
+  .modal-box textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1b1f24; color: #fff; padding: 8px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.on { opacity: .93; }
+  .form { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid var(--line); align-items: flex-end; }
+  .form label { display: flex; flex-direction: column; gap: 4px; color: var(--dim); font-size: 11px; }
+  .hint { color: var(--dim); font-size: 11px; }
+  .empty { padding: 30px; color: var(--dim); text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">OT</span>
+  <div class="stat"><b id="h-today">—</b><span>今日</span></div>
+  <div class="stat"><b id="h-week">—</b><span>本周</span></div>
+  <div class="stat"><b id="h-month">—</b><span>30 天</span></div>
+  <div class="stat"><b id="h-running">—</b><span>在跑</span></div>
+  <div class="stat"><b id="h-fb">—</b><span>降级 24h</span></div>
+  <div class="stat spacer"><span>claude</span><b id="h-claude" style="font-size:13px">—</b></div>
+  <button class="act" id="btn-refresh">刷新</button>
+</header>
+
+<nav>
+  <button data-tab="sessions" class="on">会话</button>
+  <button data-tab="cost">花费</button>
+  <button data-tab="provider">供应商</button>
+  <button data-tab="quota">额度</button>
+  <button data-tab="guard">守卫</button>
+</nav>
+
+<main>
+  <!-- 会话 -->
+  <section class="page on" id="page-sessions">
+    <div class="col">
+      <div class="toolbar">
+        <input type="text" id="s-search" placeholder="按项目 / 标题过滤" style="width:260px">
+        <button class="act primary" id="s-new">＋ 新建对话</button>
+        <button class="act" id="s-go">查询</button>
+        <button class="act" id="s-del" disabled style="color:#b91c1c;border-color:#e5b4b4">删除选中</button>
+        <span class="hint" id="s-pick">已选 0</span>
+        <span class="hint" id="s-count"></span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th style="width:26px"><input type="checkbox" id="s-all" title="全选当前列表"></th><th style="width:18px"></th><th>项目</th><th>标题</th>
+            <th class="num">花费</th><th class="num">TOKEN</th><th class="num">工具</th><th>最后活动</th><th></th>
+          </tr></thead>
+          <tbody id="s-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="detail">
+      <div class="head" id="d-head"><span class="hint">左边点一行看详情</span></div>
+      <div class="scroll" id="d-body"></div>
+    </div>
+  </section>
+
+  <!-- 花费 -->
+  <section class="page" id="page-cost">
+    <div class="col">
+      <div class="toolbar">
+        <label>时间范围</label>
+        <select id="c-days">
+          <option value="today">今天</option>
+          <option value="yesterday">昨天</option>
+          <option value="24h">24 小时内</option>
+          <option value="7d">最近 7 天</option>
+          <option value="30d" selected>最近 30 天</option>
+          <option value="all">全部</option>
+        </select>
+        <button class="act" id="c-go">刷新</button>
+        <span class="hint">数据来自 Claude Code 转录里记录的 usage</span>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="k" id="c-total-label">合计</div><div class="v" id="c-total">—</div></div>
+        <div class="card"><div class="k">Token</div><div class="v" id="c-tokens">—</div></div>
+        <div class="card"><div class="k">调用次数</div><div class="v" id="c-calls">—</div></div>
+        <div class="card"><div class="k">缓存命中</div><div class="v" id="c-cache">—</div></div>
+      </div>
+      <div class="grid3">
+        <div><h4>按天</h4><table><tbody id="c-by-day"></tbody></table></div>
+        <div><h4>按模型</h4><table><tbody id="c-by-model"></tbody></table></div>
+        <div><h4>按项目</h4><table><tbody id="c-by-project"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 供应商 -->
+  <section class="page" id="page-provider">
+    <div class="col">
+      <div id="p-banner"></div>
+      <div class="scroll" style="max-height:40%">
+        <table>
+          <thead><tr><th>应用</th><th>供应商</th><th>当前</th><th>地址</th><th>默认模型</th><th>币种</th><th>Key</th><th></th></tr></thead>
+          <tbody id="p-rows"></tbody>
+        </table>
+      </div>
+      <div class="form">
+        <label>应用<select id="p-app"><option value="claude">claude</option></select></label>
+        <label>名字<input id="p-name" type="text" style="width:150px"></label>
+        <label>Base URL<input id="p-url" type="text" style="width:320px" placeholder="https://api.example.com"></label>
+        <label>API Key<input id="p-key" type="text" style="width:220px"></label>
+        <label>币种<select id="p-currency"><option value="USD">美元 $</option><option value="CNY">人民币 ¥</option></select></label>
+        <button class="act primary" id="p-add">添加</button>
+        <button class="act" id="p-dir">打开数据目录</button>
+      </div>
+      <div class="form" style="border-top:1px dashed var(--line)">
+        <label>改模型：选中一行后<select id="p-role">
+          <option value="default" title="主模型：日常对话全用它">default · 主模型</option>
+          <option value="sonnet" title="常规推理档：子代理、会话标题、上下文压缩都走这里">sonnet · 常规</option>
+          <option value="opus" title="重推理档：复杂任务、深度分析">opus · 重推理</option>
+          <option value="haiku" title="快档：标题生成、后台小任务，选最便宜的">haiku · 快速便宜</option>
+          <option value="fable" title="最新旗舰档：需要最强模型时用">fable · 旗舰</option>
+        </select></label>
+        <label>模型<span style="display:flex;gap:6px;align-items:center"><select id="p-model" style="width:260px"></select><input id="p-model-text" type="text" style="width:260px;display:none" placeholder="手填模型名"></span></label>
+        <button class="act" id="p-setmodel">写入</button>
+        <span class="hint" id="p-sel">未选中</span>
+      </div>
+      <div class="hint" style="padding:2px 18px 10px;line-height:1.7">
+        四档该接什么：
+        <b>default</b> 主模型，日常对话全用它 ·
+        <b>sonnet</b> 常规档，<span class="warn">子代理 / 会话标题 / 上下文压缩都走这里</span>，选性价比高的 ·
+        <b>opus</b> 重推理档，复杂任务、深度分析 ·
+        <b>haiku</b> 快档，标题与后台小任务，选最便宜的 ·
+        <b>fable</b> 旗舰档，只在需要最强模型时用。
+        <br>
+        提示：多数中转站不认 <code>[1M]</code> 这类后缀，填不带后缀的名字；改完要新开会话才生效。
+      </div>
+      <div class="form" style="border-top:1px dashed var(--line)">
+        <label>计价模型<span style="display:flex;gap:6px;align-items:center"><select id="pr-model" style="width:220px"></select><input id="pr-model-text" type="text" style="width:220px;display:none" placeholder="手填模型名，或 * 兜底"></span></label>
+        <label>输入（峰）<input id="pr-in" type="number" step="0.01" min="0" style="width:100px"></label>
+        <label>输出（峰）<input id="pr-out" type="number" step="0.01" min="0" style="width:100px"></label>
+        <label>缓存读（峰）<input id="pr-cache" type="number" step="0.01" min="0" style="width:100px" placeholder="0"></label>
+        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="pr-peak"> 分峰谷</label>
+        <label id="pr-off-in-wrap" style="display:none">输入（谷）<input id="pr-in-off" type="number" step="0.01" min="0" style="width:100px"></label>
+        <label id="pr-off-out-wrap" style="display:none">输出（谷）<input id="pr-out-off" type="number" step="0.01" min="0" style="width:100px"></label>
+        <label id="pr-off-cache-wrap" style="display:none">缓存读（谷）<input id="pr-cache-off" type="number" step="0.01" min="0" style="width:100px" placeholder="0"></label>
+        <button class="act" id="pr-refresh" title="重新拉取该供应商的模型列表">刷新模型</button>
+        <button class="act" id="pr-auto" title="按供应商自己记的用量和扣款反推单价">按用量估价</button>
+        <button class="act primary" id="pr-save">保存价格</button>
+        <span class="hint" id="pr-hint">没记金额的来源按这张表估算，显示为 ≈</span>
+        <datalist id="model-list"></datalist>
+      </div>
+      <div class="scroll" style="max-height:150px;border-top:1px solid var(--line)">
+        <table><thead><tr><th>模型</th><th class="num">输入 峰/谷</th><th class="num">输出 峰/谷</th><th class="num">缓存读 峰/谷</th><th></th></tr></thead>
+        <tbody id="pr-rows"><tr><td colspan="5" class="hint" style="padding:10px">选中一个供应商后显示它的价目</td></tr></tbody></table>
+      </div>
+      <div id="pr-stats-wrap" style="display:none;border-top:1px solid var(--line)">
+        <div style="display:flex;gap:10px;align-items:center;padding:6px 18px;background:var(--panel)">
+          <span class="hint" id="pr-stats-hint"></span>
+          <button class="act" id="pr-fill-all" style="margin-left:auto">全部填入</button>
+          <button class="act" id="pr-stats-close">收起</button>
+        </div>
+        <div class="scroll" style="max-height:180px">
+          <table><thead><tr><th>模型</th><th class="num">请求</th><th class="num">TOKEN</th><th class="num">实际扣款</th>
+            <th class="num">建议输入 $/M</th><th class="num">建议输出 $/M</th><th></th></tr></thead>
+            <tbody id="pr-stats-rows"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 额度 -->
+  <section class="page" id="page-quota">
+    <div class="col">
+      <div class="toolbar">
+        <button class="act" id="q-go">刷新余额</button>
+        <span class="hint" id="q-src"></span>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="k">今日</div><div class="v" id="q-today">—</div></div>
+        <div class="card"><div class="k">本月</div><div class="v" id="q-month">—</div></div>
+        <div class="card"><div class="k">转录估算合计</div><div class="v" id="q-window">—</div></div>
+        <div class="card"><div class="k">今日请求 / 失败</div><div class="v" id="q-req">—</div></div>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>供应商</th><th>用于</th><th>当前</th><th class="num">价目</th>
+            <th class="num">日限额</th><th class="num">月限额</th><th>余额</th></tr></thead>
+          <tbody id="q-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 守卫 -->
+  <section class="page" id="page-guard">
+    <div class="col">
+      <div class="toolbar"><span class="hint">后台每 3 秒读一次新事件；命中就发系统通知。阈值存在 %LOCALAPPDATA%\ot\state.json</span></div>
+      <div class="form" style="border-top:none">
+        <label>单轮预算<input id="g-budget" type="number" step="0.1" min="0"></label>
+        <label>缓存下限 %<input id="g-cache" type="number" step="1" min="0" max="100"></label>
+        <label>上下文提醒 %<input id="g-ctx" type="number" step="1" min="50" max="100"></label>
+        <label>连败阈值<input id="g-fails" type="number" step="1" min="1"></label>
+        <label>币种<input id="g-currency" type="text" style="width:80px"></label>
+        <label><span>&nbsp;</span><span><input type="checkbox" id="g-turn"> 轮末通知</span></label>
+        <label><span>&nbsp;</span><span><input type="checkbox" id="g-exit"> 结束通知</span></label>
+        <label><span>&nbsp;</span><span><input type="checkbox" id="g-paused"> 暂停守护</span></label>
+        <button class="act primary" id="g-save">保存</button>
+      </div>
+      <div class="scroll" style="padding:0 18px">
+        <h4 style="color:var(--dim);font-size:11px">规则</h4>
+        <table>
+          <tbody>
+            <tr><td style="width:180px">单轮超预算</td><td>一轮累计花费 ≥ 预算（默认 $2）</td></tr>
+            <tr><td>上下文将满</td><td>单次 prompt token ≥ 模型窗口的 85%</td></tr>
+            <tr><td>工具连败</td><td>连续 3 次工具报错</td></tr>
+            <tr><td>上下文压缩</td><td>会话发生 compaction</td></tr>
+            <tr><td>会话结束</td><td>会话退出（session_exit）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="new-modal">
+  <div class="modal-box">
+    <h3>新建对话</h3>
+    <label>工作目录
+      <span style="display:flex;gap:8px">
+        <input id="n-dir" type="text" placeholder="D:\项目\foo" style="flex:1">
+        <button class="act" id="n-browse">浏览…</button>
+      </span>
+    </label>
+    <label>会话名称<input id="n-name" type="text" placeholder="例如：修 CI 构建"></label>
+    <label>首句提示（可选）<textarea id="n-prompt" rows="2" placeholder="开一个新会话，先让它做什么"></textarea></label>
+    <div class="modal-actions">
+      <button class="act" id="n-cancel">取消</button>
+      <button class="act primary" id="n-start">开始</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const invoke = window.__TAURI__.core.invoke;
+const $ = (id) => document.getElementById(id);
+let snap = null;
+let providerState = null;
+let selectedProfile = null;
+let selectedSession = null;
+// 勾选的会话 id（批量删除用）
+let picked = new Set();
+
+function syncPick() {
+  const n = picked.size;
+  $("s-pick").textContent = "已选 " + n;
+  $("s-del").disabled = n === 0;
+}
+
+function setAllPicked(on) {
+  const rows = [...$("s-rows").querySelectorAll(".pick")];
+  rows.forEach((cb) => { cb.checked = on; });
+  // 只作用于当前列表里的行
+  picked.clear();
+  if (on) {
+    [...$("s-rows").children].forEach((tr) => {
+      const id = tr.dataset.sid;
+      if (id) picked.add(id);
+    });
+  }
+  syncPick();
+}
+
+function money2(usd, cny) {
+  const a = usd > 0 ? "$" + usd.toFixed(2) : "";
+  const b = cny > 0 ? "¥" + cny.toFixed(2) : "";
+  return a && b ? a + " + " + b : a || b || "$0.00";
+}
+
+function money(v, cur) {
+  cur = cur || "USD";
+  if (!v) return (cur === "CNY" ? "￥" : "$") + "0";
+  return (cur === "CNY" ? "￥" : "$") + (v >= 10 ? v.toFixed(1) : v.toFixed(3));
+}
+function tokens(n) {
+  if (!n) return "0";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(n);
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+/* ---------------- 头部 ---------------- */
+async function loadSnap() {
+  snap = await invoke("snapshot");
+  if (!snap) { snap = await invoke("refresh"); }
+  const cur = (snap && snap.guard && snap.guard.currency) || "USD";
+  $("h-today").textContent = money(snap.today, cur);
+  $("h-week").textContent = money(snap.week, cur);
+  $("h-month").textContent = money(snap.month, cur);
+  $("h-running").textContent = snap.running;
+  $("h-fb").textContent = snap.fallbacks_today;
+  $("h-fb").className = snap.fallbacks_today > 0 ? "warn" : "";
+  $("h-claude").textContent = snap.provider_claude;
+}
+
+/* ---------------- 会话 ---------------- */
+async function loadSessions() {
+  const q = $("s-search").value.trim();
+  $("s-count").textContent = "读取中…";
+  const rows = await invoke("sessions", { project: q || null, limit: 300 });
+  $("s-count").textContent = rows.length + " 个会话";
+  const body = $("s-rows");
+  body.innerHTML = "";
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="9" class="empty">还没有 Claude Code 会话</td></tr>';
+    return;
+  }
+  for (const s of rows) {
+    const tr = document.createElement("tr");
+    tr.dataset.sid = s.id;
+    if (selectedSession && selectedSession.id === s.id) tr.className = "sel";
+    tr.innerHTML =
+      '<td><input type="checkbox" class="pick"></td>' +
+      '<td><span class="dot ' + (s.running ? "on" : "") + '"></span></td>' +
+      "<td>" + esc(s.project) + "</td>" +
+      '<td class="title">' + esc(s.title) + "</td>" +
+      '<td class="num">' + (s.cost || s.cost_cny ? money2(s.cost || 0, s.cost_cny || 0) : "—") + "</td>" +
+      '<td class="num">' + tokens(s.tokens) + "</td>" +
+      '<td class="num">' + s.tools + "</td>" +
+      "<td>" + esc(s.when) + (s.fallback ? ' <span class="warn">⚠' + s.fallback + "</span>" : "") + "</td>" +
+      '<td><button class="act" title="在新终端里恢复">▸</button></td>';
+    const cb = tr.querySelector(".pick");
+    cb.checked = picked.has(s.id);
+    cb.onclick = (e) => e.stopPropagation();
+    cb.onchange = () => {
+      if (cb.checked) picked.add(s.id);
+      else picked.delete(s.id);
+      syncPick();
+    };
+    tr.onclick = (e) => {
+      if (e.target.tagName === "INPUT") return;
+      if (e.target.tagName === "BUTTON") {
+        toast("正在打开终端…");
+        invoke("open_session", { cwd: s.cwd, sourceName: s.source, id: s.id });
+        return;
+      }
+      selectedSession = s;
+      [...body.children].forEach((c) => c.classList.remove("sel"));
+      tr.classList.add("sel");
+      loadDetail(s.id, s.source);
+    };
+    body.appendChild(tr);
+  }
+}
+
+async function deleteSessions(ids, label) {
+  if (!ids.length) return;
+  // 先汇总要删什么
+  let items = 0, bytes = 0, sample = [];
+  for (const id of ids) {
+    try {
+      const plan = await invoke("session_delete_plan", { id });
+      items += plan.items.length;
+      bytes += plan.total_bytes;
+      sample = sample.concat(plan.items.map((i) => i.kind + "  " + i.path));
+    } catch (e) {
+      toast("查不到要删的文件：" + e);
+      return;
+    }
+  }
+  if (!items) { toast("没找到这些会话的文件"); return; }
+
+  const mb = (bytes / 1048576).toFixed(2);
+  const head = ids.length === 1 ? label : ids.length + " 个会话";
+  const lines = sample.slice(0, 8).map((x) => "  · " + x).join("\n");
+  const more = sample.length > 8 ? "\n  … 还有 " + (sample.length - 8) + " 项" : "";
+  const ok = confirm(
+    "彻底删除 " + head + "？\n\n" +
+    "会删掉 " + items + " 项（约 " + mb + " MB）：\n" + lines + more +
+    "\n\n删除后不可恢复。"
+  );
+  if (!ok) return;
+
+  let n = 0;
+  for (const id of ids) {
+    try { n += await invoke("session_delete", { id }); }
+    catch (e) { toast("删除 " + id.slice(0, 8) + " 失败：" + e); }
+  }
+  toast("已删除 " + n + " 项");
+  picked.clear();
+  syncPick();
+  if (selectedSession && ids.includes(selectedSession.id)) {
+    selectedSession = null;
+    $("d-head").innerHTML = '<span class="hint">左边点一行看详情</span>';
+    $("d-body").innerHTML = "";
+  }
+  loadSessions();
+  loadSnap();
+}
+
+async function loadDetail(id, source) {
+  const head = $("d-head");
+  const body = $("d-body");
+  head.innerHTML = '<span class="hint">读取中…（大文件要几秒）</span>';
+  body.innerHTML = "";
+  const d = await invoke("session_detail", { id });
+  if (d.error) {
+    head.innerHTML = '<span class="bad">' + esc(d.error) + "</span>";
+    return;
+  }
+  head.innerHTML =
+    "<h3>" + esc(d.title) + "</h3>" +
+    '<div class="kv">' + esc(d.source) + " · " + esc(d.project) + " · " + esc(d.range) + "</div>" +
+    '<div class="kv">' + esc(d.stats) + "</div>" +
+    '<div class="kv">' + esc(d.cwd) + "</div>" +
+    '<div class="kv">' + esc(d.file) + " （" + d.size_mb.toFixed(1) + " MB）</div>" +
+    '<div style="margin-top:8px;display:flex;gap:8px"><button class="act primary" id="d-resume">在新终端恢复</button>' +
+    '<button class="act" id="d-del" style="color:#b91c1c;border-color:#e5b4b4">彻底删除</button></div>';
+  $("d-resume").onclick = () => invoke("open_session", { cwd: d.cwd, sourceName: d.source, id: d.id });
+  $("d-del").onclick = () => deleteSessions([d.id], d.title);
+
+  const frag = document.createDocumentFragment();
+  for (const t of d.turns) {
+    const div = document.createElement("div");
+    div.className = "turn";
+    let html = '<div class="meta">第 ' + t.index + " 轮 · " + esc(t.when) + " · " +
+      (t.cost ? money(t.cost, "USD") : "—") + " · " + tokens(t.tokens) + " token" +
+      (t.compacted ? " · 压缩 " + t.compacted + " 次" : "") + "</div>";
+    html += '<div class="you">' + esc(t.user) + "</div>";
+    for (const r of t.replies) html += '<div class="ai">' + esc(r) + "</div>";
+    for (const tool of t.tools) {
+      html += '<div class="tool' + (tool.ok ? "" : " fail") + '">· ' + esc(tool.name) +
+        (tool.dur ? " " + esc(tool.dur) : "") + (tool.ok ? "" : " 失败") + " " + esc(tool.target) + "</div>";
+    }
+    div.innerHTML = html;
+    frag.appendChild(div);
+  }
+  if (!d.turns.length) frag.innerHTML = '<div class="empty">这份转录里没有用户消息</div>';
+  body.appendChild(frag);
+}
+
+/* ---------------- 花费 ---------------- */
+async function loadCosts() {
+  const range = $("c-days").value;
+  const c = await invoke("costs", { range });
+  const rangeLabel = {
+    today: "今天",
+    yesterday: "昨天",
+    "24h": "24 小时内",
+    "7d": "最近 7 天",
+    "30d": "最近 30 天",
+    all: "全部",
+  }[range] || "合计";
+  $("c-total-label").textContent = "合计 · " + rangeLabel;
+  $("c-total").textContent = money2(c.total, c.total_cny);
+  $("c-tokens").textContent = tokens(c.tokens);
+  $("c-calls").textContent = c.calls;
+  $("c-cache").textContent = c.cache_pct.toFixed(0) + "%";
+  const fill = (id, rows, label) => {
+    const el = $(id);
+    el.innerHTML = "";
+    if (!rows.length) { el.innerHTML = '<tr><td class="hint">没有数据</td></tr>'; return; }
+    const max = Math.max(...rows.map((r) => r.cost), 0.0001);
+    for (const r of rows.slice(0, 14)) {
+      const tr = document.createElement("tr");
+      const w = Math.max(2, Math.round((r.cost / max) * 60));
+      tr.innerHTML = "<td>" + esc(r.key || label) + "</td>" +
+        '<td class="num">' + money2(r.cost || 0, r.cost_cny || 0) + "</td>" +
+        '<td class="num">' + tokens(r.tokens) + "</td>" +
+        '<td><span style="display:inline-block;height:7px;width:' + w + 'px;background:#0f766e22;border-radius:3px"></span></td>';
+      el.appendChild(tr);
+    }
+  };
+  fill("c-by-day", c.by_day);
+  fill("c-by-model", c.by_model);
+  fill("c-by-project", c.by_project);
+}
+
+/* ---------------- 供应商 ---------------- */
+async function loadProviders() {
+  providerState = await invoke("provider_list");
+  const p = providerState;
+  const warnLocal = (url) => (url && /127\.0\.0\.1|localhost/.test(url));
+  const hostOf = (u) => {
+    try { return new URL(u).host; } catch { return (u || "").replace(/^https?:\/\//, "").split("/")[0]; }
+  };
+  const curOf = (app) => p.profiles.find((x) => x.app === app && x.current);
+  // 现在只跟 Claude Code 打交道，横幅也只说 claude
+  const cur = curOf("claude");
+  const live = p.live_claude;
+  const drift = cur && live && hostOf(cur.base_url) && hostOf(cur.base_url) !== hostOf(live);
+  const driftNote = drift
+    ? "　｜　注意：配置文件被外部改过，实际指向的不是记录里选的那家"
+    : "";
+  $("p-banner").innerHTML =
+    '<div class="banner ' + (warnLocal(live) || drift ? "" : "ok") + '">' +
+    "实际生效：claude → " + esc(live || "（读不到）") +
+    (warnLocal(live)
+      ? "　—　指向本机代理，那个代理一停就断，建议切成直连"
+      : "　—　直连") +
+    driftNote +
+    "</div>";
+
+  const body = $("p-rows");
+  body.innerHTML = "";
+  for (const r of p.profiles) {
+    const tr = document.createElement("tr");
+    if (selectedProfile === r.id) tr.className = "sel";
+    const def = (r.models.find((m) => m[0] === "default") || [])[1] || "—";
+    tr.innerHTML =
+      "<td>" + esc(r.app) + "</td>" +
+      "<td>" + esc(r.name) + "</td>" +
+      "<td>" + (r.current ? "✓" : "") + "</td>" +
+      '<td class="src">' + esc(r.base_url) + (r.local ? ' <span class="warn">本机</span>' : "") + "</td>" +
+      "<td>" + esc(def) + "</td>" +
+      "<td>" + (r.currency === "CNY" ? "¥ 人民币" : "$ 美元") + "</td>" +
+      '<td class="src">' + esc(r.key_masked) + "</td>" +
+      '<td><button class="act" data-use="' + esc(r.id) + '">切换</button> ' +
+      '<button class="act" data-rm="' + esc(r.id) + '">删除</button></td>';
+    tr.onclick = (e) => {
+      if (e.target.dataset && e.target.dataset.use) {
+        invoke("provider_use", { id: e.target.dataset.use })
+          .then((msg) => { toast(msg); loadProviders(); loadSnap(); })
+          .catch((err) => toast("失败：" + err));
+        return;
+      }
+      if (e.target.dataset && e.target.dataset.rm) {
+        const row = providerState.profiles.find((x) => x.id === e.target.dataset.rm);
+        if (!confirm("确定删除 " + (row ? row.app + " / " + row.name : "这个供应商") + "？\\n（会写一份备份到 backup 目录）")) return;
+        invoke("provider_rm", { id: e.target.dataset.rm }).then(() => { toast("已删除"); selectedProfile = null; loadProviders(); });
+        return;
+      }
+      selectedProfile = r.id;
+      [...body.children].forEach((c) => c.classList.remove("sel"));
+      tr.classList.add("sel");
+      $("p-sel").textContent = "选中：" + r.app + " / " + r.name;
+      $("p-role").value = "default";
+      $("p-model").value = def === "—" ? "" : def;
+      renderPrices(r);
+      loadModels(r);
+      loadStats(r);
+    };
+    body.appendChild(tr);
+  }
+  if (!p.profiles.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">还没有供应商：在下面手动添加一个</td></tr>';
+    return;
+  }
+  // 默认选中"当前在用的"那个，省得上来看空表
+  if (!selectedProfile || !p.profiles.some((x) => x.id === selectedProfile)) {
+    const def = p.profiles.find((x) => x.current) || p.profiles[0];
+    selectedProfile = def.id;
+    $("p-sel").textContent = "选中：" + def.app + " / " + def.name;
+    const defModel = (def.models.find((m) => m[0] === "default") || [])[1] || "";
+    fillSelect($("p-model"), [defModel].filter(Boolean), defModel);
+    renderPrices(def);
+    loadModels(def);
+    loadStats(def);
+    const row = [...body.children].find((tr) => tr.querySelector('[data-use="' + def.id + '"]'));
+    if (row) row.classList.add("sel");
+  }
+}
+
+let modelsFor = "";
+
+function fillSelect(sel, items, keep) {
+  sel.innerHTML = "";
+  const seen = new Set();
+  for (const m of items) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m === "*" ? "*（该家兜底价）" : m;
+    sel.appendChild(opt);
+  }
+  if (keep && !seen.has(keep) && keep !== "—") {
+    const opt = document.createElement("option");
+    opt.value = keep;
+    opt.textContent = keep;
+    sel.appendChild(opt);
+  }
+  if (keep) sel.value = keep;
+}
+
+async function loadModels(profile) {
+  const hint = $("pr-hint");
+  hint.textContent = "拉取模型列表…";
+  try {
+    const list = await invoke("provider_models", { id: profile.id });
+    modelsFor = profile.id;
+    const all = ["*"].concat(list);
+    fillSelect($("pr-model"), all, $("pr-model").value || "*");
+    fillSelect($("p-model"), list, $("p-model").value || (list[0] || ""));
+    $("pr-model").style.display = "";
+    $("pr-model-text").style.display = "none";
+    $("p-model").style.display = "";
+    $("p-model-text").style.display = "none";
+    hint.textContent = "共 " + list.length + " 个模型可选（点框直接选）";
+  } catch (e) {
+    modelsFor = "";
+    $("pr-model").style.display = "none";
+    $("pr-model-text").style.display = "";
+    $("p-model").style.display = "none";
+    $("p-model-text").style.display = "";
+    hint.textContent = "这家没给模型列表（" + e + "），改成手填，或填 * 兜底";
+  }
+}
+
+function renderPrices(profile) {
+  const body = $("pr-rows");
+  body.innerHTML = "";
+  const list = profile.prices || [];
+  if (!list.length) {
+    body.innerHTML = '<tr><td colspan="5" class="hint" style="padding:10px">这个供应商还没填价目；先在上面填一行（模型名或 *）</td></tr>';
+    return;
+  }
+  for (const [model, inp, out, cache, offIn, offOut, offCache] of list) {
+    const tr = document.createElement("tr");
+    // 有谷时价就显示 "峰 / 谷"
+    const fmt = (peak, off) =>
+      off == null ? Number(peak).toFixed(2) : Number(peak).toFixed(2) + ' <span class="hint">/ ' + Number(off).toFixed(2) + "</span>";
+    tr.innerHTML =
+      "<td>" + esc(model) + "</td>" +
+      '<td class="num">' + fmt(inp, offIn) + "</td>" +
+      '<td class="num">' + fmt(out, offOut) + "</td>" +
+      '<td class="num">' + fmt(cache, offCache) + "</td>" +
+      '<td><button class="act" data-del="' + esc(model) + '">删除</button></td>';
+    tr.querySelector("button").onclick = async () => {
+      await invoke("provider_del_price", { id: profile.id, model });
+      toast("已删除 " + model);
+      loadProviders();
+    };
+    body.appendChild(tr);
+  }
+}
+
+let statsFor = "";
+let statsCache = [];
+
+async function loadStats(profile) {
+  $("pr-stats-wrap").style.display = "";
+  $("pr-stats-rows").innerHTML =
+    '<tr><td colspan="7" class="hint" style="padding:10px">读取该供应商的用量…</td></tr>';
+  try {
+    const rows = await invoke("provider_stats", { id: profile.id });
+    statsFor = profile.id;
+    statsCache = rows;
+    const body = $("pr-stats-rows");
+    body.innerHTML = "";
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="hint" style="padding:10px">这家没返回按模型的用量</td></tr>';
+      return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      const can = r.price_in != null;
+      tr.innerHTML =
+        "<td>" + esc(r.model) + "</td>" +
+        '<td class="num">' + r.requests + "</td>" +
+        '<td class="num">' + tokens(r.tokens) + "</td>" +
+        '<td class="num">$' + Number(r.charged).toFixed(2) + "</td>" +
+        '<td class="num">' + (can ? Number(r.price_in).toFixed(3) : "—") + "</td>" +
+        '<td class="num">' + (can ? Number(r.price_out).toFixed(3) : "—") + "</td>" +
+        '<td>' + (can ? '<button class="act">填入</button>' : "") + "</td>";
+      const btn = tr.querySelector("button");
+      if (btn) btn.onclick = () => fillPrice(profile, r);
+      body.appendChild(tr);
+    }
+    $("pr-stats-hint").textContent =
+      "建议价来自这家自己记的扣款，按输出≈4×输入折算，代回去总额与扣款一致";
+  } catch (e) {
+    $("pr-stats-rows").innerHTML =
+      '<tr><td colspan="7" class="hint" style="padding:10px">拿不到用量：' + esc(String(e)) + "</td></tr>";
+  }
+}
+
+async function fillPrice(profile, row) {
+  try {
+    await invoke("provider_set_price", {
+      id: profile.id, model: row.model,
+      input: row.price_in, output: row.price_out, cacheRead: 0,
+    });
+    toast("已填入 " + row.model);
+    await loadProviders();
+  } catch (e) { toast("失败：" + e); }
+}
+
+// 下拉里选好模型就把建议价填进两边，不用手敲
+function prModelChanged() {
+  const prof = providerState && providerState.profiles.find((x) => x.id === selectedProfile);
+  if (!prof || statsFor !== prof.id) return;
+  const raw = $("pr-model").style.display === "none" ? $("pr-model-text").value : $("pr-model").value;
+  const want = (raw || "").trim().toLowerCase();
+  const hit = statsCache.find((s) => s.model.toLowerCase() === want);
+  if (hit && hit.price_in != null) {
+    $("pr-in").value = Number(hit.price_in).toFixed(4);
+    $("pr-out").value = Number(hit.price_out).toFixed(4);
+    $("pr-stats-hint").textContent = "已按 " + hit.model + " 的实际扣款填入，可手改后保存";
+  }
+}
+$("pr-model").onchange = prModelChanged;
+$("pr-model-text").oninput = prModelChanged;
+
+$("pr-auto").onclick = () => {
+  const prof = providerState && providerState.profiles.find((x) => x.id === selectedProfile);
+  if (!prof) { toast("先在表里选一行供应商"); return; }
+  loadStats(prof);
+};
+
+$("pr-stats-close").onclick = () => { $("pr-stats-wrap").style.display = "none"; };
+
+$("pr-fill-all").onclick = async () => {
+  const prof = providerState && providerState.profiles.find((x) => x.id === selectedProfile);
+  if (!prof || !statsCache.length || statsFor !== prof.id) { toast("先等用量加载出来"); return; }
+  let n = 0;
+  for (const r of statsCache) {
+    if (r.price_in == null) continue;
+    await invoke("provider_set_price", {
+      id: prof.id, model: r.model,
+      input: r.price_in, output: r.price_out, cacheRead: 0,
+    });
+    n++;
+  }
+  toast("填了 " + n + " 个模型");
+  await loadProviders();
+};
+
+$("pr-refresh").onclick = async () => {
+  const prof = providerState && providerState.profiles.find((p) => p.id === selectedProfile);
+  if (!prof) { toast("先在表里选一行供应商"); return; }
+  await loadModels(prof);
+};
+
+$("pr-peak").onchange = () => {
+  const on = $("pr-peak").checked;
+  for (const id of ["pr-off-in-wrap", "pr-off-out-wrap", "pr-off-cache-wrap"]) {
+    $(id).style.display = on ? "" : "none";
+  }
+  if (on && !$("pr-in-off").value && $("pr-in").value) {
+    // DeepSeek 的规则就是"空闲时段 = 高峰的一半"，顺手预填
+    $("pr-in-off").value = (Number($("pr-in").value) / 2).toFixed(4);
+    $("pr-out-off").value = (Number($("pr-out").value) / 2).toFixed(4);
+    $("pr-cache-off").value = $("pr-cache").value ? (Number($("pr-cache").value) / 2).toFixed(4) : "";
+  }
+};
+
+$("pr-save").onclick = async () => {
+  if (!selectedProfile) { toast("先在表里选一行供应商"); return; }
+  const model = ($("pr-model").style.display === "none" ? $("pr-model-text").value : $("pr-model").value).trim();
+  const inp = Number($("pr-in").value);
+  const out = Number($("pr-out").value);
+  const cache = Number($("pr-cache").value || 0);
+  const peak = $("pr-peak").checked;
+  const offIn = peak && $("pr-in-off").value !== "" ? Number($("pr-in-off").value) : null;
+  const offOut = peak && $("pr-out-off").value !== "" ? Number($("pr-out-off").value) : null;
+  const offCache = peak && $("pr-cache-off").value !== "" ? Number($("pr-cache-off").value) : null;
+  if (!model) { toast("模型名不能为空（* 表示兜底）"); return; }
+  try {
+    await invoke("provider_set_price", {
+      id: selectedProfile, model, input: inp, output: out, cacheRead: cache,
+      offInput: offIn, offOutput: offOut, offCacheRead: offCache,
+    });
+    toast("已保存 " + model);
+    $("pr-model").value = ""; $("pr-in").value = ""; $("pr-out").value = ""; $("pr-cache").value = "";
+    $("pr-in-off").value = ""; $("pr-out-off").value = ""; $("pr-cache-off").value = ""; $("pr-peak").checked = false;
+    for (const id of ["pr-off-in-wrap", "pr-off-out-wrap", "pr-off-cache-wrap"]) $(id).style.display = "none";
+    loadProviders();
+  } catch (e) { toast("失败：" + e); }
+};
+
+/* ---------------- 额度 ---------------- */
+async function loadQuota() {
+  const live = true;
+  $("q-rows").innerHTML = '<tr><td colspan="9" class="hint">读取中…</td></tr>';
+  const q = await invoke("quota", { days: 30, live });
+  $("q-today").textContent = money2(q.total_today, q.total_today_cny);
+  $("q-month").textContent = money2(q.total_month, q.total_month_cny);
+  $("q-window").textContent = money(q.window_cost, "USD");
+  $("q-req").textContent = q.requests_today + " / " + q.failed_today;
+  $("q-src").textContent =
+    "余额直接查各家 /v1/usage" +
+    (q.skipped ? "；另有 " + q.skipped + " 家没有余额接口，已隐藏" : "") +
+    "　·　花费按转录 token 与你填的价目估算";
+  const body = $("q-rows");
+  body.innerHTML = "";
+  if (!q.rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">没有供应商数据</td></tr>';
+    return;
+  }
+  for (const r of q.rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + esc(r.name) + "</td>" +
+      '<td class="src">' + esc((r.apps || "").split("/").join(" · ")) + "</td>" +
+      "<td>" + (r.current ? "✓" : "") + "</td>" +
+      '<td class="num">' + (r.priced ? r.priced + " 条" : "未填") + "</td>" +
+      '<td class="num">' + (r.limit_daily ? money(r.limit_daily, "USD") : "未设") + "</td>" +
+      '<td class="num">' + (r.limit_monthly ? money(r.limit_monthly, "USD") : "未设") + "</td>" +
+      "<td>" + esc(r.balance || "—") + "</td>";
+    body.appendChild(tr);
+  }
+}
+
+/* ---------------- 守卫 ---------------- */
+function fillGuard(g) {
+  $("g-budget").value = g.budget_per_turn;
+  $("g-cache").value = Math.round(g.cache_hit_min * 100);
+  $("g-ctx").value = Math.round(g.context_pct * 100);
+  $("g-fails").value = g.max_failures;
+  $("g-currency").value = g.currency;
+  $("g-turn").checked = g.notify_turn_end;
+  $("g-exit").checked = g.notify_finish;
+  $("g-paused").checked = g.paused;
+}
+
+/* ---------------- 事件 ---------------- */
+document.querySelectorAll("nav button").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("nav button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("on"));
+    $("page-" + b.dataset.tab).classList.add("on");
+    if (b.dataset.tab === "cost") loadCosts();
+    if (b.dataset.tab === "provider") loadProviders();
+    if (b.dataset.tab === "quota") loadQuota();
+  };
+});
+
+$("btn-refresh").onclick = async () => { await invoke("refresh"); await loadSnap(); toast("已刷新"); };
+$("s-new").onclick = () => {
+  $("n-dir").value = localStorage.getItem("ot.lastDir") || "";
+  $("n-name").value = "";
+  $("n-prompt").value = "";
+  $("new-modal").classList.add("on");
+  $("n-name").focus();
+};
+
+$("n-cancel").onclick = () => $("new-modal").classList.remove("on");
+$("new-modal").onclick = (e) => { if (e.target.id === "new-modal") $("new-modal").classList.remove("on"); };
+
+$("n-browse").onclick = async () => {
+  const picked = await invoke("pick_dir", { start: $("n-dir").value || null });
+  if (picked) $("n-dir").value = picked;
+};
+
+$("n-start").onclick = async () => {
+  const dir = $("n-dir").value.trim();
+  const name = $("n-name").value.trim();
+  const prompt = $("n-prompt").value.trim();
+  if (!dir) { toast("先选工作目录"); return; }
+  try {
+    await invoke("new_session", { dir, name, prompt: prompt || null });
+    localStorage.setItem("ot.lastDir", dir);
+    $("new-modal").classList.remove("on");
+    toast("已在新窗口开一个会话" + (name ? "：" + name : ""));
+    setTimeout(loadSessions, 2500);
+    setTimeout(loadSnap, 3000);
+  } catch (e) {
+    toast("失败：" + e);
+  }
+};
+
+$("s-go").onclick = loadSessions;
+$("s-all").onchange = (e) => setAllPicked(e.target.checked);
+$("s-del").onclick = () => {
+  const ids = [...picked];
+  const one = ids.length === 1 ? (() => {
+    const tr = [...$("s-rows").children].find((x) => x.dataset.sid === ids[0]);
+    return tr ? tr.querySelector(".title").textContent : ids[0];
+  })() : "";
+  deleteSessions(ids, one);
+};
+$("s-search").onkeydown = (e) => { if (e.key === "Enter") loadSessions(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("new-modal").classList.remove("on");
+  if (e.key === "Enter" && $("new-modal").classList.contains("on") && e.target.id === "n-name") $("n-start").click();
+});
+$("c-go").onclick = loadCosts;
+$("c-days").onchange = loadCosts;
+$("q-go").onclick = loadQuota;
+
+$("p-add").onclick = async () => {
+  const app = $("p-app").value;
+  const name = $("p-name").value.trim();
+  const url = $("p-url").value.trim();
+  const key = $("p-key").value.trim();
+  if (!name || !url) { toast("名字和地址必填"); return; }
+  try {
+    await invoke("provider_add", { app, name, baseUrl: url, key, currency: $("p-currency").value });
+    toast("已添加");
+    $("p-name").value = ""; $("p-url").value = ""; $("p-key").value = "";
+    loadProviders();
+  } catch (e) { toast("失败：" + e); }
+};
+
+
+$("p-setmodel").onclick = async () => {
+  if (!selectedProfile) { toast("先在表里选一行"); return; }
+  const role = $("p-role").value;
+  const model = ($("p-model").style.display === "none" ? $("p-model-text").value : $("p-model").value).trim();
+  if (!model) { toast("模型不能为空"); return; }
+  try { await invoke("provider_set_model", { id: selectedProfile, role, model }); toast("已写入 " + role + " = " + model); loadProviders(); loadSnap(); }
+  catch (e) { toast("失败：" + e); }
+};
+
+$("p-dir").onclick = () => invoke("open_store_dir");
+
+$("g-save").onclick = async () => {
+  const patch = {
+    budget_per_turn: Number($("g-budget").value),
+    cache_hit_min: Number($("g-cache").value) / 100,
+    context_pct: Number($("g-ctx").value) / 100,
+    max_failures: Number($("g-fails").value),
+    currency: $("g-currency").value.trim().toUpperCase(),
+    notify_turn_end: $("g-turn").checked,
+    notify_finish: $("g-exit").checked,
+    paused: $("g-paused").checked,
+  };
+  await invoke("save_guard", { patch });
+  toast("已保存");
+  await loadSnap();
+};
+
+(async function init() {
+  await loadSnap();
+  const startTab = (window.__OT_TAB || "").trim();
+  if (startTab && startTab !== "sessions") {
+    const btn = document.querySelector('nav button[data-tab="' + startTab + '"]');
+    if (btn) btn.click();
+  }
+  fillGuard(snap.guard);
+  await loadSessions();
+  setInterval(async () => {
+    await loadSnap();
+    fillGuard(snap.guard);
+  }, 20000);
+})();
+</script>
+</body>
+</html>
