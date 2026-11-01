@@ -88,6 +88,10 @@ body.light .toast { background: rgba(17,18,22,.9); }
   position: sticky; top: 0; z-index: 30; padding: 8px 14px; margin: 0;
   background: #b45309; color: #fff; font-size: 13px; text-align: center;
 }
+.think { margin: 10px 14px; padding: 8px 12px; border-left: 3px solid #9ad9c4; background: #f4fbf8; border-radius: 8px; color: #4b5563; font-size: 13px; line-height: 1.6; }
+.think-head { font-weight: 600; color: #0f766e; cursor: pointer; user-select: none; }
+.think-body { margin-top: 6px; white-space: pre-wrap; }
+.think.done .think-body { display: none; }
 </style></head>
 <body>
 <header><span class="dot" id="dot"></span><b id="title">OT</b><button id="theme" class="ghost icon-btn2">☾</button><button id="refresh" class="ghost icon-btn2">↻</button><span class="sub" id="sub">连接中…</span></header>
@@ -105,6 +109,7 @@ body.light .toast { background: rgba(17,18,22,.9); }
 <script>
 const params = new URLSearchParams(location.search);
 const token = params.get('token') || '';
+let openSession = params.get('open') || '';
 let host = params.get('host') || location.host;
 // 有局域网地址就优先用它（比隧道快很多）
 try { if (window.OTNotify && window.OTNotify.lanHost) { const l = window.OTNotify.lanHost(); if (l) host = l + ':7788'; } } catch (e) {}
@@ -120,6 +125,8 @@ const attachBox = document.getElementById('attach');
 const sheet = document.getElementById('sheet');
 const sessionsBox = document.getElementById('sessions');
 let ws, cur = null, currentId = '', curRaw = '';
+let thinkEl = null;
+let connecting = false;
 let attachments = [];
 
 function escHtml(s) {
@@ -180,6 +187,7 @@ function add(role, text) {
   el.className = 'line ' + role;
   el.textContent = text;
   log.appendChild(el);
+  while (log.children.length > 160) log.removeChild(log.firstChild);
   window.scrollTo(0, document.body.scrollHeight);
   return el;
 }
@@ -191,6 +199,15 @@ let retry = 800;
 let connectStart = 0;
 let lastConnectMs = 0;
 function cacheKey(suffix) { return 'omp.' + suffix + '.' + host; }
+function fmtWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(0, 16).replace('T', ' ');
+  const p2 = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+    ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+
 function toast(text) {
   try {
     const el = document.createElement('div');
@@ -203,18 +220,7 @@ function toast(text) {
 }
 
 function ensureNotifyPerm() {
-  try {
-    if (!window.OTNotify || !window.OTNotify.canNotify) return;
-    if (window.OTNotify.canNotify()) return;
-    const bar = document.createElement('div');
-    bar.className = 'perm-banner';
-    bar.textContent = '通知权限未开启，点此授权';
-    bar.onclick = () => {
-      try { window.OTNotify.requestNotifyPermission(); } catch (e) {}
-      setTimeout(() => bar.remove(), 1500);
-    };
-    document.body.appendChild(bar);
-  } catch (e) {}
+  // 通知改由 ntfy 系统推送，App 内不再申请通知权限
 }
 
 function diagnose() {
@@ -228,7 +234,7 @@ function diagnose() {
       if (window.OTNotify.serviceState) state = window.OTNotify.serviceState();
     }
   } catch (e) {}
-  const msg = '通知权限：' + (can === null ? '未知（非 App 环境）' : can ? '已授权' : '未授权') +
+  const msg = '推送方式：ntfy（系统通道）' +
     '\n后台服务：' + (svc ? '运行中（' + state + '）' : '未运行') +
     '\n页面连接：' + (ws && ws.readyState === 1 ? '已连接（' + lastConnectMs + ' ms）' : '未连接') +
     '\n\n要发送一条测试通知吗？';
@@ -255,14 +261,23 @@ function showLocalNotification(title, body) {
 }
 
 function connect() {
+  if (connecting) return;
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  connecting = true;
+  try {
+    if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); }
+  } catch (e) {}
+  ws = null;
   const isLocal = /^(127\.|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host) || /:\d+$/.test(host);
   const proto = isLocal ? 'ws://' : 'wss://';
   try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, isLocal ? 'ws' : 'wss'); } catch (e) {}
   ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
-  try { if (window.OTNotify && window.OTNotify.canNotify && !window.OTNotify.canNotify()) { setTimeout(() => toast('请允许 OT 的通知权限，否则后台收不到提醒'), 1200); } } catch (e) {}
+  // 通知权限不再需要（走 ntfy）
   connectStart = Date.now();
-  ws.onopen = () => { retry = 800; lastConnectMs = Date.now() - connectStart; setStatus('已连接'); };
+  ws.onopen = () => { connecting = false; retry = 800; lastConnectMs = Date.now() - connectStart; setStatus('已连接'); };
   ws.onclose = () => {
+    connecting = false;
+    ws = null;
     setStatus('已断开');
     retry = Math.min(5000, Math.max(800, retry * 1.6));
     setTimeout(connect, retry);
@@ -275,6 +290,7 @@ function connect() {
       try { localStorage.setItem(cacheKey('history'), JSON.stringify({ title: m.title, history: m.history || [], id: m.id })); } catch {}
       setStatus(m.status === 'running' ? '运行中' : '空闲');
       currentId = m.id || '';
+      if (openSession) { try { ws.send(JSON.stringify({ type: 'open', id: openSession })); } catch (e) {} openSession = ''; }
       log.innerHTML = '';
       curRaw = '';
       (m.history || []).forEach((l) => {
@@ -286,6 +302,27 @@ function connect() {
       renderSessions(m.list || [], m.current || currentId);
     } else if (m.t === 'user') {
       cur = add('user', m.text);
+    } else if (m.t === 'thinking') {
+      if (!thinkEl) {
+        thinkEl = document.createElement('div');
+        thinkEl.className = 'think';
+        thinkEl.innerHTML = '<div class="think-head">思考中…</div><div class="think-body"></div>';
+        thinkEl.querySelector('.think-head').onclick = () => thinkEl.classList.toggle('done');
+        log.appendChild(thinkEl);
+      }
+      thinkEl.querySelector('.think-body').textContent += m.text;
+      window.scrollTo(0, document.body.scrollHeight);
+    } else if (m.t === 'thinking_zh') {
+      if (!thinkEl) {
+        thinkEl = document.createElement('div');
+        thinkEl.className = 'think';
+        thinkEl.innerHTML = '<div class="think-head">思考过程（中文）</div><div class="think-body"></div>';
+        thinkEl.querySelector('.think-head').onclick = () => thinkEl.classList.toggle('done');
+        log.appendChild(thinkEl);
+      }
+      thinkEl.querySelector('.think-head').textContent = '思考过程（中文）';
+      thinkEl.querySelector('.think-body').textContent = m.text;
+      thinkEl.classList.add('done');
     } else if (m.t === 'text') {
       if (!cur || cur.className.indexOf('agent') < 0) { cur = add('agent', ''); curRaw = ''; }
       curRaw += m.text;
@@ -351,7 +388,7 @@ function renderSessions(list, current) {
     b.className = 'sess' + (s.id === current ? ' on' : '');
     const t = document.createElement('b'); t.textContent = s.title || '新会话';
     const d = document.createElement('span');
-    d.textContent = (s.cwd || '').split(/[\\/]/).pop() + ' · ' + (s.updatedAt || s.createdAt || '').slice(0, 16).replace('T', ' ');
+    d.textContent = (s.cwd || '').split(/[\\/]/).pop() + ' · ' + fmtWhen(s.updatedAt || s.createdAt);
     b.appendChild(t); b.appendChild(d);
     b.onclick = () => {
       sheet.classList.add('hidden');
@@ -528,6 +565,8 @@ title.addEventListener('pointercancel', () => clearTimeout(pressTimer));
 
 // 保存过的自定义地址优先
 try {
+  const savedRaw = localStorage.getItem('omp.url');
+  if (savedRaw && savedRaw.indexOf('t-kepler.cc.cd') >= 0) localStorage.removeItem('omp.url');
   const saved = localStorage.getItem('omp.url');
   if (saved) {
     const u = new URL(saved);
@@ -557,6 +596,15 @@ ensureNotifyPerm();
 connect();
 </script>
 </body></html>
+
+
+
+
+
+
+
+
+
 
 
 

@@ -30,7 +30,7 @@ import android.widget.TextView;
 
 public class MainActivity extends Activity {
     private static final String DEFAULT_URL =
-            "https://omp.t-kepler.cc.cd/?token=50628324ae47c2c19567d9a8";
+            "http://120.26.20.154:17788/?token=50628324ae47c2c19567d9a8";
     private static final String PREFS = "omp";
     private static final String KEY_URL = "url";
 
@@ -39,36 +39,86 @@ public class MainActivity extends Activity {
     private static final String CHANNEL = "ot_tasks";
     private ValueCallback<Uri[]> fileCallback;
     private WebView web;
+    private android.widget.FrameLayout container;
+    private String pendingUrl = "";
     private View splash;
     private LinearLayout setup;
+
+
+    /** 把未捕获异常写进 SharedPreferences，下次启动显示出来。 */
+    private void installCrashHandler() {
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                e.printStackTrace(new java.io.PrintWriter(sw));
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString("last_crash", sw.toString())
+                        .apply();
+            } catch (Throwable ignored) {
+            }
+            if (prev != null) prev.uncaughtException(t, e);
+        });
+    }
+
+    private String lastCrash() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE).getString("last_crash", null);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installCrashHandler();
         ensureChannel();
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         String saved = prefs.getString(KEY_URL, null);
+        String openSession = getIntent().getStringExtra("open_session");
+        if (openSession == null || openSession.isEmpty()) openSession = sessionFromIntent(getIntent());
+        // 旧的 Cloudflare 地址已停用，自动迁到 frp
+        if (saved != null && saved.contains("t-kepler.cc.cd")) {
+            saved = DEFAULT_URL;
+            prefs.edit().putString(KEY_URL, saved).apply();
+        }
         String fromIntent = urlFromIntent(getIntent());
         if (fromIntent != null) {
             prefs.edit().putString(KEY_URL, fromIntent).apply();
             saved = fromIntent;
         }
+        String crash = lastCrash();
+        if (crash != null && !crash.isEmpty()) {
+            prefs.edit().remove("last_crash").apply();
+            showSetup("上次启动崩了：\n\n" + crash.substring(0, Math.min(1500, crash.length())));
+            return;
+        }
         if (saved == null || saved.isEmpty()) {
             prefs.edit().putString(KEY_URL, DEFAULT_URL).apply();
-            load(DEFAULT_URL);
+            load(DEFAULT_URL, openSession);
         } else {
-            load(saved);
+            load(saved, openSession);
         }
     }
 
     @Override
     protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
+        String openSession = intent.getStringExtra("open_session");
+        if (openSession == null || openSession.isEmpty()) openSession = sessionFromIntent(intent);
         String url = urlFromIntent(intent);
+        if (url == null && openSession != null) {
+            url = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, DEFAULT_URL);
+        }
         if (url != null) {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_URL, url).apply();
-            load(url);
+            load(url, null);
         }
+    }
+
+    private String sessionFromIntent(android.content.Intent intent) {
+        if (intent == null || intent.getData() == null) return null;
+        Uri data = intent.getData();
+        if (!"omp".equals(data.getScheme())) return null;
+        String sid = data.getQueryParameter("session");
+        return sid == null || sid.isEmpty() ? null : sid;
     }
 
     private String urlFromIntent(android.content.Intent intent) {
@@ -80,9 +130,11 @@ public class MainActivity extends Activity {
         return url.startsWith("http") ? url : "https://" + url;
     }
 
-    private void load(String url) {
+    private void load(String url, String openSession) {
         if (setup != null) {
-            setContentView(web);
+            // 注意：不能 setContentView(web)——web 还在 container 里，
+            // 那样会抛 "The specified child already has a parent" 直接闪退
+            setContentView(container);
             setup = null;
         }
         if (web == null) {
@@ -107,7 +159,9 @@ public class MainActivity extends Activity {
                 public void onReceivedError(WebView view, android.webkit.WebResourceRequest request,
                                             android.webkit.WebResourceError error) {
                     if (request != null && request.isForMainFrame()) {
-                        showSetup("连不上\n" + view.getUrl() + "\n\n确认电脑端 OMP Desktop 正在运行");
+                        String detail = pendingUrl;
+                        if (error != null) detail += "\n" + error.getErrorCode() + " " + error.getDescription();
+                        showSetup("连不上\n" + detail + "\n\n确认电脑上的 OT 正在运行，手机能上外网");
                     }
                 }
             });
@@ -126,26 +180,27 @@ public class MainActivity extends Activity {
                     }
                 }
             });
-            android.widget.FrameLayout root = new android.widget.FrameLayout(this);
-            root.setBackgroundColor(Color.parseColor("#151517"));
-            root.addView(web, new android.widget.FrameLayout.LayoutParams(
+            container = new android.widget.FrameLayout(this);
+            container.setBackgroundColor(Color.parseColor("#151517"));
+            container.addView(web, new android.widget.FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            root.addView(buildSplash(), new android.widget.FrameLayout.LayoutParams(
+            container.addView(buildSplash(), new android.widget.FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            setContentView(root);
+            setContentView(container);
         }
-        web.loadUrl(shellUrl(url));
+        pendingUrl = remoteUrl(url, openSession);
+        web.loadUrl(pendingUrl);
     }
 
-    /** http(s) 地址转成本地壳 + token/host 参数，秒开 */
-    private String shellUrl(String remote) {
+    /** 直接加载服务器上的页面；页面自己会要 token。 */
+    private String remoteUrl(String remote, String openSession) {
         try {
             Uri uri = Uri.parse(remote);
-            String host = uri.getHost();
-            String token = uri.getQueryParameter("token");
-            if (host == null) return remote;
-            return "file:///android_asset/index.html?host=" + Uri.encode(host)
-                    + (token != null ? "&token=" + Uri.encode(token) : "");
+            Uri.Builder b = uri.buildUpon();
+            if (openSession != null && !openSession.isEmpty()) {
+                b.appendQueryParameter("open", openSession);
+            }
+            return b.build().toString();
         } catch (Exception e) {
             return remote;
         }
@@ -207,7 +262,7 @@ public class MainActivity extends Activity {
         setup.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("OMP Desktop");
+        title.setText("OT");
         title.setTextColor(Color.parseColor("#f9fafb"));
         title.setTextSize(24);
         setup.addView(title);
@@ -234,7 +289,7 @@ public class MainActivity extends Activity {
             if (url.isEmpty()) return;
             if (!url.startsWith("http")) url = "https://" + url;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_URL, url).apply();
-            load(url);
+            load(url, null);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -285,22 +340,6 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 
-    private void maybeScanLan() {
-        try {
-            SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
-            if (System.currentTimeMillis() - p.getLong("lan_ts", 0) < 10 * 60 * 1000L) return;
-            LanScan.scan(7788, (ip) -> runOnUiThread(() -> {
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                        .putString("lan_host", ip)
-                        .putLong("lan_ts", System.currentTimeMillis())
-                        .apply();
-                if (web != null) {
-                    web.evaluateJavascript("window.__otLan && window.__otLan('" + ip + "')", null);
-                }
-            }));
-        } catch (Exception ignored) {
-        }
-    }
 
     public class NotifyBridge {
         @JavascriptInterface
@@ -343,7 +382,7 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (Build.VERSION.SDK_INT >= 33
                         && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+
                 }
             });
         }
@@ -373,7 +412,7 @@ public class MainActivity extends Activity {
         }
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+
         }
     }
 
@@ -402,27 +441,26 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        try {
-            Intent svc = new Intent(this, NotifyService.class);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
-            else startService(svc);
-        } catch (Exception ignored) {
-        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        try {
-            stopService(new Intent(this, NotifyService.class));
-        } catch (Exception ignored) {
-        }
         if (web != null) {
             web.evaluateJavascript("window.__otResume && window.__otResume()", null);
         }
-        if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("lan_enabled", false)) maybeScanLan();
+
     }
 }
+
+
+
+
+
+
+
+
+
 
 
 

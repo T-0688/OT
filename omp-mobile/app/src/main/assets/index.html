@@ -1,573 +1,301 @@
 <!doctype html>
-<html lang="zh-CN"><head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OT</title>
-<meta name="theme-color" content="#151517" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <style>
-  :root { color-scheme: dark; }
+  :root { --line:#e6e8ea; --dim:#6b7280; --brand:#1f6f5c; --bg:#f7f8f8; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; overflow-x: hidden; background: #151517; color: #f9fafb; font: 15px/1.65 -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; }
-  header { position: sticky; top: 0; z-index: 2; padding: 12px 16px; background: rgba(21,21,23,.92); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 8px; }
-  header b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sub { color: #979da6; font-size: 12px; margin-left: auto; white-space: nowrap; }
-  #log { padding: 14px 16px 190px; display: flex; flex-direction: column; gap: 10px; }
-  .line { white-space: pre-wrap; word-break: break-word; }
-  .user { align-self: flex-end; background: #2a2a33; padding: 8px 12px; border-radius: 14px 14px 4px 14px; max-width: 82%; }
-  .agent { align-self: flex-start; max-width: 100%; }
-  .tool { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #979da6; border-left: 2px solid #33343a; padding-left: 8px; }
-  .note { color: #f7ad31; font-size: 12px; }
-  .agent p { margin: 0 0 8px; }
-  .agent h1, .agent h2, .agent h3, .agent h4 { margin: 12px 0 6px; font-size: 16px; line-height: 1.4; }
-  .agent ul, .agent ol { margin: 6px 0 8px; padding-left: 22px; }
-  .agent li { margin: 2px 0; }
-  .agent code { background: #232324; padding: 1px 5px; border-radius: 5px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-  .agent pre { background: #1b1b1c; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 10px 12px; overflow: auto; margin: 8px 0; }
-  .agent pre code { background: none; padding: 0; font-size: 12.5px; }
-  .agent blockquote { border-left: 2px solid #33343a; margin: 6px 0; padding-left: 10px; color: #cfd3d6; }
-  .agent a { color: #7aaaff; }
-  .agent hr { border: none; border-top: 1px solid rgba(255,255,255,.1); margin: 12px 0; }
-  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: rgba(21,21,23,.96); backdrop-filter: blur(14px); border-top: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 8px; }
-  .composer-row { display: flex; gap: 8px; align-items: flex-end; }
-  textarea { flex: 1 1 auto; min-width: 0; width: 100%; resize: none; min-height: 42px; max-height: 120px; background: #232324; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: inherit; padding: 10px 12px; font: inherit; }
-  button { border: none; border-radius: 12px; flex: 0 0 auto; height: 44px; padding: 0 16px; font: inherit; font-weight: 600; background: #f9fafb; color: #0f1115; }
-  button:disabled { opacity: .4; }
-  .plus { width: 44px; padding: 0; background: #232324; color: #cfd3d6; border: 1px solid rgba(255,255,255,.12); font-size: 20px; font-weight: 400; }
-  .attach { display: flex; flex-wrap: wrap; gap: 6px; }
-  .attach:empty { display: none; }
-  .chip { display: flex; align-items: center; gap: 6px; background: #232324; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 4px 8px; font-size: 12px; color: #cfd3d6; max-width: 100%; }
-  .chip img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; }
-  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-  .chip button { height: 20px; width: 20px; padding: 0; border-radius: 50%; background: transparent; color: #979da6; font-size: 14px; font-weight: 400; }
-  .perm { background: #232324; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-  .perm .acts { display: flex; gap: 8px; }
-  .perm .acts button { flex: 1; height: 36px; }
-  .perm .acts .no { background: transparent; color: #f25a5a; border: 1px solid rgba(242,90,90,.4); }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: #41c977; flex: 0 0 auto; }
-  .dot.run { background: #f7ad31; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { opacity: .35 } }
-  .ghost { background: transparent; color: #cfd3d6; border: 1px solid rgba(255,255,255,.16); height: 30px; padding: 0 12px; font-weight: 500; font-size: 13px; }
-  .sheet { position: fixed; inset: 0; z-index: 10; background: rgba(10,10,12,.96); backdrop-filter: blur(10px); display: flex; flex-direction: column; transition: transform .22s ease, opacity .22s ease; }
-  .sheet.hidden { transform: translateX(-100%); opacity: 0; pointer-events: none; }
-  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
-  #sessions { overflow: auto; padding: 10px 8px 40px; }
-  .sess { display: flex; flex-direction: column; gap: 3px; width: 100%; height: auto; min-height: 52px; text-align: left; background: transparent; color: inherit; border: none; border-radius: 10px; padding: 9px 12px; }
-  .sess:active, .sess.on { background: #232324; }
-  .sess b { font-weight: 500; font-size: 14px; line-height: 1.35; color: #f9fafb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sess span { font-size: 11px; color: #979da6; font-family: ui-monospace, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.light { background: #f5f7fa; color: #0f1115; }
-  body.light header { background: rgba(245,247,250,.94); border-bottom-color: rgba(0,0,0,.08); }
-  body.light footer { background: rgba(245,247,250,.96); border-top-color: rgba(0,0,0,.08); }
-  body.light .user { background: #e4e7ee; }
-  body.light .tool { color: #6b7280; border-left-color: #d5d9e2; }
-  body.light textarea { background: #fff; border-color: rgba(0,0,0,.12); color: #0f1115; }
-  body.light .plus { background: #fff; color: #4b5563; border-color: rgba(0,0,0,.12); }
-  body.light button { background: #111827; color: #fff; }
-  body.light .ghost { background: transparent; color: #374151; border-color: rgba(0,0,0,.16); }
-  body.light .chip { background: #fff; border-color: rgba(0,0,0,.1); color: #374151; }
-  body.light .sess { background: transparent; color: #374151; }
-  body.light .sess.on, body.light .sess:active { background: #e9edf5; }
-  body.light .sess span { color: #6b7280; }
-  body.light #sessions .tool { color: #6b7280; }
-  body.light .sess b { color: #0f1115; }
-  body.light .agent code, body.light .agent pre { background: #eef1f6; border-color: rgba(0,0,0,.08); }
-  body.light .sheet { background: rgba(245,247,250,.98); }
-  .icon-btn2 { width: 30px; padding: 0; height: 30px; font-size: 14px; font-weight: 400; }
-.toast {
-  position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 8px);
-  background: rgba(17,18,22,.92); color: #fff; font-size: 13px;
-  padding: 8px 14px; border-radius: 10px; opacity: 0;
-  transition: opacity .2s, transform .2s; z-index: 50; pointer-events: none;
-  max-width: 82vw; text-align: center;
-}
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
-body.light .toast { background: rgba(17,18,22,.9); }
-.perm-banner {
-  position: sticky; top: 0; z-index: 30; padding: 8px 14px; margin: 0;
-  background: #b45309; color: #fff; font-size: 13px; text-align: center;
-}
-</style></head>
+  body { margin:0; font:15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background:var(--bg); color:#111; padding-bottom: env(safe-area-inset-bottom); }
+  header { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--line); z-index:5; }
+  .bar { display:flex; align-items:center; gap:10px; padding:10px 14px; }
+  .logo { width:22px; height:22px; border-radius:50%; border:4px solid var(--brand); }
+  .bar b { font-size:16px; }
+  .status { margin-left:auto; font-size:12px; color:var(--dim); }
+  nav { display:flex; border-top:1px solid var(--line); }
+  nav button { flex:1; border:0; background:none; padding:10px 0; font-size:14px; color:var(--dim); }
+  nav button.on { color:var(--brand); font-weight:600; box-shadow: inset 0 -2px 0 var(--brand); }
+  main { padding:10px 12px 90px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+  .muted { color:var(--dim); font-size:12px; }
+  .title { font-weight:600; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:99px; background:#eef5f2; color:var(--brand); }
+  .num { font-variant-numeric: tabular-nums; }
+  .ev { margin:10px 0; }
+  .ev .who { font-size:11px; color:var(--dim); margin-bottom:2px; }
+  .user { background:#eef5f2; border-radius:10px; padding:8px 10px; white-space:pre-wrap; }
+  .agent { white-space:pre-wrap; }
+  .tool { font-family: ui-monospace, Consolas, monospace; font-size:12px; background:#f3f4f6;
+          border-radius:8px; padding:6px 8px; white-space:pre-wrap; color:#374151; }
+  .send { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
+          padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; gap:8px; }
+  .send input { flex:1; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:15px; }
+  .send button { border:0; border-radius:10px; background:var(--brand); color:#fff; padding:0 16px; font-size:15px; }
+  .send button:disabled { opacity:.5; }
+  .back { border:0; background:none; color:var(--brand); font-size:14px; padding:0; }
+  .err { color:#b91c1c; }
+</style>
+</head>
 <body>
-<header><span class="dot" id="dot"></span><b id="title">OT</b><button id="theme" class="ghost icon-btn2">☾</button><button id="refresh" class="ghost icon-btn2">↻</button><span class="sub" id="sub">连接中…</span></header>
-<div id="log"></div>
-<footer>
-  <div class="attach" id="attach"></div>
-  <div class="composer-row">
-    <button id="plus" class="plus" title="上传图片或文件">＋</button>
-    <textarea id="input" rows="1" placeholder="回复 agent…"></textarea>
-    <button id="send">发送</button>
+<header>
+  <div class="bar">
+    <div class="logo"></div><b>OT</b>
+    <span class="status" id="status">连接中…</span>
   </div>
-</footer>
-<div id="sheet" class="sheet hidden"><div class="sheet-head"><b>会话</b><button id="closeSheet" class="ghost">关闭</button></div><div id="sessions"></div></div>
-<input type="file" id="picker" multiple style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.log,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
+  <nav>
+    <button data-tab="sessions" class="on">会话</button>
+    <button data-tab="costs">花费</button>
+    <button data-tab="quota">额度</button>
+  </nav>
+</header>
+
+<main id="main"></main>
+<div class="send" id="sendbar" style="display:none">
+  <input id="prompt" placeholder="发一条指令给这个会话…" autocomplete="off">
+  <button id="sendbtn">发送</button>
+</div>
+
 <script>
-const params = new URLSearchParams(location.search);
-const token = params.get('token') || '';
-let host = params.get('host') || location.host;
-// 有局域网地址就优先用它（比隧道快很多）
-try { if (window.OTNotify && window.OTNotify.lanHost) { const l = window.OTNotify.lanHost(); if (l) host = l + ':7788'; } } catch (e) {}
-const log = document.getElementById('log');
-const dot = document.getElementById('dot');
-const sub = document.getElementById('sub');
-const title = document.getElementById('title');
-const input = document.getElementById('input');
-const sendBtn = document.getElementById('send');
-const plusBtn = document.getElementById('plus');
-const picker = document.getElementById('picker');
-const attachBox = document.getElementById('attach');
-const sheet = document.getElementById('sheet');
-const sessionsBox = document.getElementById('sessions');
-let ws, cur = null, currentId = '', curRaw = '';
-let attachments = [];
+const qs = new URLSearchParams(location.search);
+const $ = (s) => document.querySelector(s);
+let tab = 'sessions';
+let curId = '';
+let timer = null;
 
-function escHtml(s) {
-  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-}
-function inlineMd(s) {
-  return s
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-}
-function md(src) {
-  const lines = src.replace(/\r/g, '').split('\n');
-  let out = '', inCode = false, codeBuf = [], listType = null;
-  const closeList = () => { if (listType) { out += listType === 'ul' ? '</ul>' : '</ol>'; listType = null; } };
-  for (const line of lines) {
-    if (/^```/.test(line.trim())) {
-      if (inCode) { out += '<pre><code>' + escHtml(codeBuf.join('\n')) + '</code></pre>'; codeBuf = []; inCode = false; }
-      else { closeList(); inCode = true; }
-      continue;
-    }
-    if (inCode) { codeBuf.push(line); continue; }
-    if (!line.trim()) { closeList(); continue; }
-    let m;
-    if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) {
-      closeList();
-      const lvl = m[1].length;
-      out += '<h' + lvl + '>' + inlineMd(escHtml(m[2])) + '</h' + lvl + '>';
-      continue;
-    }
-    if ((m = /^\s*[-*+]\s+(.*)$/.exec(line))) {
-      if (listType !== 'ul') { closeList(); out += '<ul>'; listType = 'ul'; }
-      out += '<li>' + inlineMd(escHtml(m[1])) + '</li>';
-      continue;
-    }
-    if ((m = /^\s*\d+\.\s+(.*)$/.exec(line))) {
-      if (listType !== 'ol') { closeList(); out += '<ol>'; listType = 'ol'; }
-      out += '<li>' + inlineMd(escHtml(m[1])) + '</li>';
-      continue;
-    }
-    if ((m = /^>\s?(.*)$/.exec(line))) {
-      closeList();
-      out += '<blockquote>' + inlineMd(escHtml(m[1])) + '</blockquote>';
-      continue;
-    }
-    if (/^(-{3,}|\*{3,})$/.test(line.trim())) { closeList(); out += '<hr />'; continue; }
-    closeList();
-    out += '<p>' + inlineMd(escHtml(line)) + '</p>';
+// token 来源优先级：URL > 上次保存的
+let TOKEN = qs.get('token') || localStorage.getItem('ot.token') || '';
+
+async function api(path, opt) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(path + sep + 'token=' + encodeURIComponent(TOKEN), opt);
+  if (res.status === 401) {
+    const e = new Error('token 不对');
+    e.needToken = true;
+    throw e;
   }
-  if (inCode) out += '<pre><code>' + escHtml(codeBuf.join('\n')) + '</code></pre>';
-  closeList();
-  return out;
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
 }
 
-function add(role, text) {
-  const el = document.createElement('div');
-  el.className = 'line ' + role;
-  el.textContent = text;
-  log.appendChild(el);
-  window.scrollTo(0, document.body.scrollHeight);
-  return el;
-}
-function setStatus(s) {
-  sub.textContent = s;
-  dot.className = 'dot' + (s === '运行中' ? ' run' : '');
-}
-let retry = 800;
-let connectStart = 0;
-let lastConnectMs = 0;
-function cacheKey(suffix) { return 'omp.' + suffix + '.' + host; }
-function toast(text) {
-  try {
-    const el = document.createElement('div');
-    el.className = 'toast';
-    el.textContent = text;
-    document.body.appendChild(el);
-    setTimeout(() => el.classList.add('show'), 20);
-    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 2600);
-  } catch (e) {}
-}
-
-function ensureNotifyPerm() {
-  try {
-    if (!window.OTNotify || !window.OTNotify.canNotify) return;
-    if (window.OTNotify.canNotify()) return;
-    const bar = document.createElement('div');
-    bar.className = 'perm-banner';
-    bar.textContent = '通知权限未开启，点此授权';
-    bar.onclick = () => {
-      try { window.OTNotify.requestNotifyPermission(); } catch (e) {}
-      setTimeout(() => bar.remove(), 1500);
+/// 没有 token 或 token 不对时弹一个输入框；存到 localStorage，下次不用再填。
+function askToken(bad) {
+  return new Promise((resolve) => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <div class="title">先填一次访问口令</div>
+        <div class="muted" style="margin:6px 0 10px">
+          在电脑上打开 <code>%LOCALAPPDATA%\\ot\\mobile-token.txt</code>，把里面的 32 位字符粘过来。
+          ${bad ? '<div class="err" style="margin-top:6px">刚才那个不对，再试一次</div>' : ''}
+        </div>
+        <input id="tk" placeholder="粘贴 token" autocomplete="off"
+               style="width:100%;padding:10px;border:1px solid #e6e8ea;border-radius:10px;font-size:15px">
+        <button id="tkok" class="back" style="margin-top:12px;background:#1f6f5c;color:#fff;
+                border-radius:10px;padding:10px 16px">保存并连接</button>
+      </div>`;
+    const input = $('#tk');
+    input.value = TOKEN;
+    input.focus();
+    const done = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      TOKEN = v;
+      localStorage.setItem('ot.token', v);
+      resolve();
     };
-    document.body.appendChild(bar);
-  } catch (e) {}
+    $('#tkok').onclick = done;
+    input.onkeydown = (e) => { if (e.key === 'Enter') done(); };
+  });
+}
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const money = (usd, cny) => {
+  const a = usd > 0 ? '$' + usd.toFixed(2) : '';
+  const b = cny > 0 ? '¥' + cny.toFixed(2) : '';
+  return a && b ? a + ' + ' + b : (a || b || '—');
+};
+const rel = (iso) => {
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (d < 60) return '刚刚';
+  if (d < 3600) return Math.floor(d / 60) + ' 分钟前';
+  if (d < 86400) return Math.floor(d / 3600) + ' 小时前';
+  return Math.floor(d / 86400) + ' 天前';
+};
+function setStatus(t, bad) {
+  const el = $('#status');
+  el.textContent = t;
+  el.className = 'status' + (bad ? ' err' : '');
 }
 
-function diagnose() {
-  let can = null;
-  let svc = false;
-  let state = '?';
+async function loadSessions() {
+  const d = await api('/api/sessions?limit=60');
+  const rows = d.sessions.map((s) => `
+    <div class="card" data-open="${esc(s.id)}">
+      <div class="row">
+        <span class="title">${esc(s.title || s.id.slice(0, 8))}</span>
+        ${s.running ? '<span class="pill">运行中</span>' : ''}
+      </div>
+      <div class="row muted" style="margin-top:6px">
+        <span>${esc(s.project || '—')} · ${rel(s.updated)}</span>
+        <span class="num">${money(s.cost, s.cost_cny)}</span>
+      </div>
+      <div class="row muted" style="margin-top:2px">
+        <span>${s.turns} 轮 · ${s.tools} 工具</span>
+        <span class="num">${s.tokens >= 1e6 ? (s.tokens/1e6).toFixed(1)+'M' : Math.round(s.tokens/1000)+'k'} token</span>
+      </div>
+    </div>`).join('');
+  $('#main').innerHTML = rows || '<div class="card muted">还没有会话</div>';
+  $('#main').querySelectorAll('[data-open]').forEach((el) => {
+    el.onclick = () => openSession(el.dataset.open);
+  });
+}
+
+async function openSession(id) {
+  curId = id;
+  $('#sendbar').style.display = 'flex';
+  await renderSession();
+  clearInterval(timer);
+  timer = setInterval(renderSession, 3000);
+}
+
+async function renderSession() {
+  if (!curId) return;
+  const d = await api('/api/session?id=' + encodeURIComponent(curId));
+  if (d.error) { $('#main').innerHTML = `<div class="card err">${esc(d.error)}</div>`; return; }
+  const evs = d.events.map((e) => {
+    if (e.role === 'user') return `<div class="ev"><div class="who">你</div><div class="user">${esc(e.text)}</div></div>`;
+    if (e.kind === 'tool') return `<div class="ev"><div class="tool">${esc(e.text)}</div></div>`;
+    return `<div class="ev"><div class="who">AI</div><div class="agent">${esc(e.text)}</div></div>`;
+  }).join('');
+  $('#main').innerHTML = `
+    <div class="card">
+      <button class="back" id="back">← 返回列表</button>
+      <div class="title" style="margin-top:6px">${esc(d.title || d.id.slice(0, 8))}</div>
+      <div class="muted">${esc(d.project || '')} · ${d.running ? '运行中' : '空闲'} · ${money(d.cost, d.cost_cny)}</div>
+    </div>
+    <div class="card">${evs || '<span class="muted">这个会话还没有内容</span>'}</div>`;
+  $('#back').onclick = () => {
+    clearInterval(timer);
+    $('#sendbar').style.display = 'none';
+    curId = '';
+    loadSessions();
+  };
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+$('#sendbtn').onclick = async () => {
+  const text = $('#prompt').value.trim();
+  if (!text || !curId) return;
+  const btn = $('#sendbtn');
+  btn.disabled = true;
+  btn.textContent = '发送中';
   try {
-    if (window.OTNotify) {
-      if (window.OTNotify.canNotify) can = window.OTNotify.canNotify();
-      if (window.OTNotify.serviceRunning) svc = window.OTNotify.serviceRunning();
-      if (window.OTNotify.serviceState) state = window.OTNotify.serviceState();
-    }
-  } catch (e) {}
-  const msg = '通知权限：' + (can === null ? '未知（非 App 环境）' : can ? '已授权' : '未授权') +
-    '\n后台服务：' + (svc ? '运行中（' + state + '）' : '未运行') +
-    '\n页面连接：' + (ws && ws.readyState === 1 ? '已连接（' + lastConnectMs + ' ms）' : '未连接') +
-    '\n\n要发送一条测试通知吗？';
-  if (confirm(msg)) {
-    try { window.OTNotify && window.OTNotify.testNotify && window.OTNotify.testNotify(); } catch (e) {}
+    const r = await api('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: curId, prompt: text }),
+    });
+    if (r.error) throw new Error(r.error);
+    $('#prompt').value = '';
+    await renderSession();
+  } catch (e) {
+    alert('发送失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送';
+  }
+};
+
+async function loadCosts() {
+  const d = await guarded(() => api('/api/costs?days=30'));
+  const bars = d.by_day.slice(0, 30).reverse();
+  const max = Math.max(...bars.map((b) => b.cost + b.cost_cny / 7), 0.0001);
+  $('#main').innerHTML = `
+    <div class="card">
+      <div class="row"><span class="muted">合计（${d.days} 天）</span>
+        <span class="title num">${money(d.total, d.total_cny)}</span></div>
+      <div class="row muted" style="margin-top:6px">
+        <span>${d.calls} 次调用</span>
+        <span>${(d.tokens/1e6).toFixed(1)}M token</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">按天</div>
+      ${bars.map((b) => {
+        const v = b.cost + b.cost_cny / 7;
+        const w = Math.max(2, (v / max) * 100);
+        return `<div style="margin:6px 0">
+          <div class="row muted"><span>${esc(b.key)}</span><span class="num">${money(b.cost, b.cost_cny)}</span></div>
+          <div style="height:6px;background:#eef0f1;border-radius:3px;margin-top:3px">
+            <div style="height:6px;width:${w}%;background:#1f6f5c;border-radius:3px"></div>
+          </div></div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">按模型</div>
+      ${d.by_model.slice(0, 12).map((b) => `
+        <div class="row" style="margin:6px 0">
+          <span>${esc(b.key)}</span><span class="num">${money(b.cost, b.cost_cny)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function loadQuota() {
+  const d = await guarded(() => api('/api/quota'));
+  $('#main').innerHTML = '<div class="card muted">读取中…</div>';
+  const rows = d.rows.map((r) => r.error
+    ? `<div class="row"><span>${esc(r.name)}</span><span class="muted">查不到</span></div>`
+    : `<div class="row" style="margin:8px 0">
+         <span>${esc(r.name)} ${r.current ? '<span class="pill">当前</span>' : ''}</span>
+         <span class="num title">${r.unit === 'CNY' ? '¥' : '$'}${Number(r.amount).toFixed(2)}</span>
+       </div>`).join('');
+  $('#main').innerHTML = `<div class="card">${rows || '<span class="muted">没有可查的供应商</span>'}</div>`;
+}
+
+document.querySelectorAll('nav button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+    tab = b.dataset.tab;
+    clearInterval(timer);
+    $('#sendbar').style.display = 'none';
+    curId = '';
+    if (tab === 'sessions') loadSessions();
+    if (tab === 'costs') loadCosts();
+    if (tab === 'quota') loadQuota();
+  };
+});
+
+/// 401 就再问一次 token，然后重试。
+async function guarded(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!e.needToken) throw e;
+    await askToken(true);
+    return await fn();
   }
 }
 
-function showLocalNotification(title, body) {
-  try {
-    if (window.OTNotify && window.OTNotify.post) {
-      window.OTNotify.post(title, body);
+async function boot() {
+  while (true) {
+    try {
+      setStatus('连接中…');
+      await loadSessions();
+      setStatus('已连接');
+      return;
+    } catch (e) {
+      if (e.needToken) {
+        setStatus('需要口令', true);
+        await askToken(!!TOKEN);
+        continue;
+      }
+      setStatus('连不上：' + e.message, true);
       return;
     }
-  } catch (e) {}
-  try {
-    if ('Notification' in window) {
-      if (Notification.permission === 'granted') new Notification(title, { body: body });
-      else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then((p) => { if (p === 'granted') new Notification(title, { body: body }); });
-      }
-    }
-  } catch (e) {}
+  }
 }
-
-function connect() {
-  const isLocal = /^(127\.|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host) || /:\d+$/.test(host);
-  const proto = isLocal ? 'ws://' : 'wss://';
-  try { if (window.OTNotify && window.OTNotify.setTarget) window.OTNotify.setTarget(host, token, isLocal ? 'ws' : 'wss'); } catch (e) {}
-  ws = new WebSocket(proto + host + '/ws?token=' + encodeURIComponent(token));
-  try { if (window.OTNotify && window.OTNotify.canNotify && !window.OTNotify.canNotify()) { setTimeout(() => toast('请允许 OT 的通知权限，否则后台收不到提醒'), 1200); } } catch (e) {}
-  connectStart = Date.now();
-  ws.onopen = () => { retry = 800; lastConnectMs = Date.now() - connectStart; setStatus('已连接'); };
-  ws.onclose = () => {
-    setStatus('已断开');
-    retry = Math.min(5000, Math.max(800, retry * 1.6));
-    setTimeout(connect, retry);
-  };
-  ws.onmessage = (ev) => {
-    lastSeen = Date.now();
-    const m = JSON.parse(ev.data);
-    if (m.t === 'hello') {
-      title.textContent = m.title || 'OT';
-      try { localStorage.setItem(cacheKey('history'), JSON.stringify({ title: m.title, history: m.history || [], id: m.id })); } catch {}
-      setStatus(m.status === 'running' ? '运行中' : '空闲');
-      currentId = m.id || '';
-      log.innerHTML = '';
-      curRaw = '';
-      (m.history || []).forEach((l) => {
-        if (l.role === 'agent') { cur = add('agent', ''); curRaw = l.text; cur.innerHTML = md(l.text); }
-        else { cur = add(l.role, l.text); }
-      });
-    } else if (m.t === 'sessions') {
-      try { localStorage.setItem(cacheKey('sessions'), JSON.stringify(m.list || [])); } catch {}
-      renderSessions(m.list || [], m.current || currentId);
-    } else if (m.t === 'user') {
-      cur = add('user', m.text);
-    } else if (m.t === 'text') {
-      if (!cur || cur.className.indexOf('agent') < 0) { cur = add('agent', ''); curRaw = ''; }
-      curRaw += m.text;
-      cur.innerHTML = md(curRaw);
-      window.scrollTo(0, document.body.scrollHeight);
-    } else if (m.t === 'tool') {
-      cur = add('tool', m.title || '工具');
-    } else if (m.t === 'note') {
-      add('note', m.text);
-    } else if (m.t === 'status') {
-      setStatus(m.text);
-    } else if (m.t === 'notify') {
-      const ntitle = m.title || 'OT';
-      const nbody = m.body || '当前任务完成';
-      let svc = false;
-      try { svc = !!(window.OTNotify && window.OTNotify.serviceRunning && window.OTNotify.serviceRunning()); } catch (e) {}
-      if (document.hidden && !svc) showLocalNotification(ntitle, nbody);
-      else toast(nbody);
-    } else if (m.t === 'turn_end') {
-      setStatus('空闲');
-      cur = null;
-    } else if (m.t === 'reset') {
-      log.innerHTML = '';
-      cur = null;
-      curRaw = '';
-    } else if (m.t === 'file_saved') {
-      const item = attachments.find((a) => a.id === m.id);
-      if (item) { item.path = m.path; renderAttach(); }
-    } else if (m.t === 'permission') {
-      const box = document.createElement('div');
-      box.className = 'perm';
-      const p = document.createElement('div');
-      p.textContent = m.title;
-      const acts = document.createElement('div');
-      acts.className = 'acts';
-      (m.options || []).forEach((o) => {
-        const b = document.createElement('button');
-        b.textContent = o.label;
-        if (o.kind === 'reject') b.className = 'no';
-        b.onclick = () => {
-          ws.send(JSON.stringify({ type: 'permission', id: m.id, optionId: o.optionId }));
-          acts.querySelectorAll('button').forEach((x) => (x.disabled = true));
-        };
-        acts.appendChild(b);
-      });
-      box.appendChild(p); box.appendChild(acts);
-      log.appendChild(box);
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-  };
-}
-function renderSessions(list, current) {
-  sessionsBox.innerHTML = '';
-  if (!list.length) {
-    const empty = document.createElement('div');
-    empty.className = 'tool';
-    empty.textContent = '还没有会话';
-    sessionsBox.appendChild(empty);
-    return;
-  }
-  list.forEach((s) => {
-    const b = document.createElement('button');
-    b.className = 'sess' + (s.id === current ? ' on' : '');
-    const t = document.createElement('b'); t.textContent = s.title || '新会话';
-    const d = document.createElement('span');
-    d.textContent = (s.cwd || '').split(/[\\/]/).pop() + ' · ' + (s.updatedAt || s.createdAt || '').slice(0, 16).replace('T', ' ');
-    b.appendChild(t); b.appendChild(d);
-    b.onclick = () => {
-      sheet.classList.add('hidden');
-      title.textContent = s.title || 'OT';
-      ws.send(JSON.stringify({ type: 'open', id: s.id }));
-      setStatus('切换中…');
-    };
-    sessionsBox.appendChild(b);
-  });
-}
-function openSheet() {
-  sheet.classList.remove('hidden');
-  sessionsBox.innerHTML = '<div class="tool">加载中…</div>';
-  ws.send(JSON.stringify({ type: 'sessions' }));
-}
-document.getElementById('closeSheet').onclick = () => sheet.classList.add('hidden');
-
-/* 右滑打开会话列表，左滑关闭 */
-let startX = null, startY = null;
-document.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  startX = t.clientX; startY = t.clientY;
-}, { passive: true });
-document.addEventListener('touchend', (e) => {
-  if (startX === null) return;
-  const t = e.changedTouches[0];
-  const dx = t.clientX - startX;
-  const dy = t.clientY - startY;
-  if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) {
-    if (dx > 0 && startX < 70 && sheet.classList.contains('hidden')) openSheet();
-    else if (dx < 0 && !sheet.classList.contains('hidden')) sheet.classList.add('hidden');
-  }
-  startX = null; startY = null;
-}, { passive: true });
-
-function readAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-function renderAttach() {
-  attachBox.innerHTML = '';
-  attachments.forEach((a, idx) => {
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    if (a.kind === 'image') {
-      const img = document.createElement('img');
-      img.src = 'data:' + a.mimeType + ';base64,' + a.data;
-      chip.appendChild(img);
-    }
-    const label = document.createElement('span');
-    label.textContent = a.name + (a.kind === 'file' && !a.path ? '（上传中…）' : '');
-    chip.appendChild(label);
-    const x = document.createElement('button');
-    x.textContent = '×';
-    x.onclick = () => { attachments.splice(idx, 1); renderAttach(); };
-    chip.appendChild(x);
-    attachBox.appendChild(chip);
-  });
-}
-plusBtn.onclick = () => picker.click();
-picker.onchange = async () => {
-  for (const file of picker.files) {
-    const dataUrl = await readAsDataURL(file);
-    const base64 = String(dataUrl).split(',')[1] || '';
-    if ((file.type || '').indexOf('image/') === 0) {
-      attachments.push({ kind: 'image', name: file.name, mimeType: file.type || 'image/png', data: base64 });
-    } else {
-      const id = Math.random().toString(36).slice(2);
-      attachments.push({ kind: 'file', id, name: file.name, data: base64, path: null });
-      ws.send(JSON.stringify({ type: 'file', id, name: file.name, data: base64 }));
-    }
-  }
-  picker.value = '';
-  renderAttach();
-};
-
-sendBtn.onclick = () => {
-  if (!ws || ws.readyState !== 1) return;
-  const pendingUpload = attachments.some((a) => a.kind === 'file' && !a.path);
-  if (pendingUpload) { add('note', '文件还在上传，稍等一下'); return; }
-  const images = attachments.filter((a) => a.kind === 'image').map((a) => ({ data: a.data, mimeType: a.mimeType, name: a.name }));
-  const paths = attachments.filter((a) => a.kind === 'file' && a.path).map((a) => a.path);
-  let text = input.value.trim();
-  if (!text && !images.length && !paths.length) return;
-  if (paths.length) text += (text ? '\n\n' : '') + '[附带的文件]\n' + paths.map((p) => '- ' + p).join('\n');
-  ws.send(JSON.stringify({ type: 'prompt', text, images }));
-  input.value = '';
-  attachments = [];
-  renderAttach();
-};
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBtn.click();
-});
-const themeBtn = document.getElementById('theme');
-const refreshBtn = document.getElementById('refresh');
-function applyTheme(t) {
-  document.body.classList.toggle('light', t === 'light');
-  themeBtn.textContent = t === 'light' ? '☀' : '☾';
-  localStorage.setItem('ot-theme', t);
-}
-applyTheme(localStorage.getItem('ot-theme') || 'dark');
-themeBtn.onclick = () => applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
-refreshBtn.onclick = () => {
-  setStatus('重连中…');
-  try { if (ws) ws.close(); } catch (e) {}
-  setTimeout(connect, 300);
-};
-setInterval(() => {
-  if (ws && ws.readyState === 1) {
-    try { ws.send(JSON.stringify({ type: 'ping' })); } catch (e) {}
-  }
-}, 10000);
-let lastSeen = Date.now();
-setInterval(() => {
-  if (ws && ws.readyState === 1 && Date.now() - lastSeen > 35000) {
-    setStatus('重连中…');
-    try { ws.close(); } catch (e) {}
-  }
-}, 5000);
-
-window.__otLan = (ip) => {
-  if (!ip) return;
-  const target = ip + ':7788';
-  if (host === target) return;
-  host = target;
-  setStatus('切换到局域网…');
-  try { if (ws) ws.close(); } catch (e) {}
-};
-
-window.__otResume = () => {
-  if (!ws || ws.readyState > 1) { retry = 800; ensureNotifyPerm();
-connect(); }
-};
-window.addEventListener('online', () => {
-  if (!ws || ws.readyState > 1) ensureNotifyPerm();
-connect();
-});
-
-let dotTaps = 0;
-let dotTimer = null;
-document.addEventListener('click', (e) => {
-  if (e.target && e.target.id === 'dot') {
-    dotTaps++;
-    clearTimeout(dotTimer);
-    dotTimer = setTimeout(() => { dotTaps = 0; }, 1200);
-    if (dotTaps >= 3) { dotTaps = 0; diagnose(); }
-  }
-});
-
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && (!ws || ws.readyState > 1)) ensureNotifyPerm();
-connect();
-});
-
-// 长按标题可改连接地址（同一 Wi-Fi 下用局域网地址明显更快）
-let pressTimer = null;
-title.addEventListener('pointerdown', () => {
-  pressTimer = setTimeout(() => {
-    const next = prompt('连接地址（http://IP:7788/?token=...）', host ? 'http://' + host + '/?token=' + token : '');
-    if (!next) return;
-    try {
-      const u = new URL(next);
-      localStorage.setItem('omp.url', next);
-      location.href = u.href;
-    } catch { alert('地址格式不对'); }
-  }, 650);
-});
-title.addEventListener('pointerup', () => clearTimeout(pressTimer));
-title.addEventListener('pointercancel', () => clearTimeout(pressTimer));
-
-// 保存过的自定义地址优先
-try {
-  const saved = localStorage.getItem('omp.url');
-  if (saved) {
-    const u = new URL(saved);
-    if (u.host !== host) {
-      location.href = u.href;
-    }
-  }
-} catch {}
-
-// 先用缓存把上次对话画出来，WS 连上后再校准
-try {
-  const cached = JSON.parse(localStorage.getItem(cacheKey('history')) || 'null');
-  if (cached && cached.history) {
-    title.textContent = cached.title || 'OT';
-    currentId = cached.id || '';
-    log.innerHTML = '';
-    curRaw = '';
-    cached.history.forEach((l) => {
-      if (l.role === 'agent') { cur = add('agent', ''); curRaw = l.text; cur.innerHTML = md(l.text); }
-      else { cur = add(l.role, l.text); }
-    });
-    setStatus('连接中…');
-  }
-} catch {}
-
-ensureNotifyPerm();
-connect();
+boot();
 </script>
-</body></html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+</body>
+</html>

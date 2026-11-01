@@ -46,7 +46,8 @@ public class NotifyService extends Service {
                     JSONObject obj = new JSONObject(text);
                     String title = obj.optString("title", "OT");
                     String body = obj.optString("body", "当前任务完成");
-                    notifyTask(title, body);
+                    String sid = obj.optString("sessionId", "");
+                    notifyTask(title, body, sid);
                 } catch (Exception ignored) {
                 }
             }
@@ -130,7 +131,7 @@ public class NotifyService extends Service {
                 failures++;
                 setState("连接失败");
                 if (failures == 3) {
-                    notifyTask("OT", "后台连接失败，请打开一次 OT 检查网络");
+                    notifyTask("OT", "后台连接失败，请打开一次 OT 检查网络", null);
                 }
             } finally {
                 OtWsClient c = client;
@@ -210,10 +211,12 @@ public class NotifyService extends Service {
         }
     }
 
-    private PendingIntent openIntent() {
+    private PendingIntent openIntent(String sessionId) {
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        return PendingIntent.getActivity(this, 0, intent,
+        if (sessionId != null && !sessionId.isEmpty()) intent.putExtra("open_session", sessionId);
+        int code = sessionId == null ? 0 : sessionId.hashCode();
+        return PendingIntent.getActivity(this, code, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
@@ -224,21 +227,24 @@ public class NotifyService extends Service {
         return b.setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setContentTitle("OT")
                 .setContentText("后台：" + STATE)
-                .setContentIntent(openIntent())
+                .setContentIntent(openIntent(null))
                 .setOngoing(true)
                 .build();
     }
 
-    private void notifyTask(String title, String body) {
+    private void notifyTask(String title, String body, String sessionId) {
         try {
+            String safeBody = body == null || body.isEmpty() ? "当前任务完成" : body;
             Notification.Builder b = Build.VERSION.SDK_INT >= 26
                     ? new Notification.Builder(this, CHANNEL_TASK)
                     : new Notification.Builder(this);
             b.setSmallIcon(android.R.drawable.stat_notify_chat)
                     .setContentTitle(title == null || title.isEmpty() ? "OT" : title)
-                    .setContentText(body == null || body.isEmpty() ? "当前任务完成" : body)
+                    .setContentText(safeBody)
+                    .setStyle(new Notification.BigTextStyle().bigText(safeBody))
+                    .setCategory(Notification.CATEGORY_MESSAGE)
                     .setAutoCancel(true)
-                    .setContentIntent(openIntent())
+                    .setContentIntent(openIntent(sessionId))
                     .setDefaults(Notification.DEFAULT_ALL);
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (nm != null) nm.notify((int) (System.currentTimeMillis() % 100000), b.build());
@@ -267,6 +273,8 @@ public class NotifyService extends Service {
         super.onDestroy();
     }
 }
+
+
 
 
 

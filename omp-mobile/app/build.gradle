@@ -2,18 +2,35 @@ apply plugin: "com.android.application"
 
 android {
     namespace "dev.ot.app"
-    compileSdk 33
+    compileSdk 36
 
     defaultConfig {
-        applicationId "dev.ot.app"
+        applicationId "dev.ot.mobile"
         minSdk 24
-        targetSdk 33
-        versionCode 400
-        versionName "1.30.0"
+        targetSdk 36
+        versionCode 534
+        versionName "1.60.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../ot-release.jks")
+            storePassword "f3m9ffKEyJYVtNTtRGe"
+            keyAlias "ot"
+            keyPassword "f3m9ffKEyJYVtNTtRGe"
+        }
     }
 
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+        debug {
+            minifyEnabled false
+        }
     }
 
     compileOptions {
@@ -21,33 +38,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
