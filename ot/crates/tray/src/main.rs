@@ -185,6 +185,17 @@ struct TurnView {
 }
 
 #[derive(Serialize, Clone)]
+struct FileRow {
+    path: String,
+    name: String,
+    dir: String,
+    rel: String,
+    tool: String,
+    count: usize,
+    when: String,
+}
+
+#[derive(Serialize, Clone)]
 struct Detail {
     id: String,
     source: String,
@@ -196,6 +207,7 @@ struct Detail {
     file: String,
     size_mb: f64,
     turns: Vec<TurnView>,
+    files: Vec<FileRow>,
     exit: Option<String>,
     models: Vec<String>,
     error: Option<String>,
@@ -213,6 +225,7 @@ fn empty_detail(id: String, error: Option<String>) -> Detail {
         file: String::new(),
         size_mb: 0.0,
         turns: Vec::new(),
+        files: Vec::new(),
         exit: None,
         models: Vec::new(),
         error,
@@ -288,6 +301,33 @@ fn session_detail(id: String) -> Detail {
     models.sort();
     models.dedup();
 
+    // 产出文件：Write / Edit 这类工具落盘写过的路径，按最后写入时间倒序
+    let files: Vec<FileRow> = ot_core::sessions::produced_files(&s)
+        .into_iter()
+        .map(|f| {
+            let name = f
+                .path
+                .rsplit(['\\', '/'])
+                .next()
+                .unwrap_or(f.path.as_str())
+                .to_string();
+            let dir = f
+                .path
+                .strip_suffix(name.as_str())
+                .map(|p| p.trim_end_matches(['\\', '/']).to_string())
+                .unwrap_or_default();
+            FileRow {
+                name,
+                dir,
+                rel: f.rel,
+                tool: f.tool,
+                count: f.count,
+                when: ot_core::rel_time(Some(f.last)),
+                path: f.path,
+            }
+        })
+        .collect();
+
     Detail {
         id: s.id.clone(),
         source: s.source.clone(),
@@ -314,6 +354,7 @@ fn session_detail(id: String) -> Detail {
         file: s.path.to_string_lossy().to_string(),
         size_mb: s.size as f64 / 1_048_576.0,
         turns,
+        files,
         exit: s.exit.clone(),
         models,
         error: None,
@@ -1207,6 +1248,48 @@ fn open_store_dir() -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 用系统默认程序打开一个文件；传目录就直接打开目录。
+#[tauri::command]
+fn open_path(path: String) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("文件不在了：{path}"));
+    }
+    // 走 `cmd /c start`：raw_arg 自己带引号，路径里带 & ^ % 也不会被 cmd 拆开
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/c", "start", ""]);
+    cmd.raw_arg(format!("\"{path}\""));
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// 在资源管理器里定位这个文件；文件没了就退到它所在的目录。
+#[tauri::command]
+fn reveal_path(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        return std::process::Command::new("explorer")
+            .arg(p)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    }
+    if p.exists() {
+        return std::process::Command::new("explorer")
+            .arg(format!("/select,{path}"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    }
+    match p.parent() {
+        Some(dir) if dir.is_dir() => std::process::Command::new("explorer")
+            .arg(dir)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        _ => Err(format!("找不到：{path}")),
+    }
+}
+
 fn toggle_guard(app: &AppHandle) {
     let state = app.state::<AppState>();
     let mut guard = state.watch.lock().unwrap();
@@ -1290,7 +1373,9 @@ fn main() {
             open_session,
             new_session,
             pick_dir,
-            open_store_dir
+            open_store_dir,
+            open_path,
+            reveal_path
         ])
         .on_window_event(|window, event| {
             // 点关闭不退出，收进托盘继续在后台跑（手机端要靠它）

@@ -714,3 +714,208 @@ pub fn events_from_lines(lines: &[String], text_cap: usize) -> Vec<Ev> {
     }
     out
 }
+
+// ------------------------------------------------------------------ 产出文件
+
+/// 会话写/改过的一个文件。
+///
+/// 只认会把内容落到盘上的工具（Write / Edit / MultiEdit / NotebookEdit …）；
+/// Read、Bash 这类不记——它们的目标不一定是文件，也不一定是"产出"。
+#[derive(Debug, Clone)]
+pub struct ProducedFile {
+    /// 绝对路径（相对路径按会话的 cwd 展开）
+    pub path: String,
+    /// 相对 cwd 的短路径；在 cwd 之外时与 `path` 相同
+    pub rel: String,
+    /// 最后一次动它的工具名
+    pub tool: String,
+    /// 写 + 改的次数
+    pub count: usize,
+    /// 最后一次动它的时间
+    pub last: DateTime<Utc>,
+}
+
+fn is_write_tool(name: &str) -> bool {
+    matches!(
+        name.trim().to_ascii_lowercase().as_str(),
+        "write"
+            | "edit"
+            | "multiedit"
+            | "notebookedit"
+            | "notepad"
+            | "apply_patch"
+            | "str_replace"
+            | "str_replace_editor"
+    )
+}
+
+fn is_absolute(raw: &str) -> bool {
+    let b = raw.as_bytes();
+    raw.starts_with('\\')
+        || raw.starts_with('/')
+        || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
+}
+
+/// 折叠 `.` / `..`、统一成反斜杠。**不做** canonicalize：文件可能早就删了，
+/// 而且 `\\wsl.localhost` 之类的路径碰一下可能要几百毫秒。
+fn normalize_path(raw: &str, cwd: &str) -> String {
+    let raw = raw.trim().trim_matches('"');
+    if raw.is_empty() {
+        return String::new();
+    }
+    let cwd = cwd.trim().trim_matches('"');
+    let joined = if is_absolute(raw) {
+        raw.to_string()
+    } else if cwd.is_empty() {
+        raw.to_string()
+    } else {
+        format!("{}\\{}", cwd.trim_end_matches(['\\', '/']), raw)
+    };
+
+    let unified = joined.replace('/', "\\");
+    let (prefix, rest) = match unified.strip_prefix("\\\\") {
+        Some(r) => ("\\\\", r),
+        None => ("", unified.as_str()),
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in rest.split('\\') {
+        match seg {
+            "" | "." => {}
+            // "C:" 这种前缀不能弹，所以留一个下限
+            ".." => {
+                if parts.len() > 1 {
+                    parts.pop();
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+    format!("{prefix}{}", parts.join("\\"))
+}
+
+/// 在 cwd 里面就返回相对路径，省得界面上每行都从头写一遍盘符。
+fn rel_path(path: &str, cwd: &str) -> String {
+    let cwd = cwd.trim().trim_end_matches(['\\', '/']);
+    if cwd.is_empty() {
+        return path.to_string();
+    }
+    match path.get(..cwd.len()) {
+        Some(head) if head.eq_ignore_ascii_case(cwd) && path.as_bytes().get(cwd.len()) == Some(&b'\\') => {
+            path[cwd.len() + 1..].to_string()
+        }
+        _ => path.to_string(),
+    }
+}
+
+/// 这个会话产出过哪些文件，按最后一次写入时间倒序。
+///
+/// Windows 路径不区分大小写，所以按小写去重；同一个文件改十次只留一行，带次数。
+pub fn produced_files(s: &Session) -> Vec<ProducedFile> {
+    let mut order: Vec<String> = Vec::new();
+    let mut map: HashMap<String, ProducedFile> = HashMap::new();
+
+    for ev in &s.events {
+        let Ev::Tool {
+            ts,
+            name,
+            target: Some(target),
+            ..
+        } = ev
+        else {
+            continue;
+        };
+        if !is_write_tool(name) {
+            continue;
+        }
+        let path = normalize_path(target, &s.cwd);
+        if path.is_empty() {
+            continue;
+        }
+        let key = path.to_lowercase();
+        match map.get_mut(&key) {
+            Some(f) => {
+                f.count += 1;
+                if *ts >= f.last {
+                    f.last = *ts;
+                    f.tool = name.clone();
+                }
+            }
+            None => {
+                order.push(key.clone());
+                map.insert(
+                    key,
+                    ProducedFile {
+                        rel: rel_path(&path, &s.cwd),
+                        path,
+                        tool: name.clone(),
+                        count: 1,
+                        last: *ts,
+                    },
+                );
+            }
+        }
+    }
+
+    let mut out: Vec<ProducedFile> = order.into_iter().filter_map(|k| map.remove(&k)).collect();
+    out.sort_by(|a, b| b.last.cmp(&a.last));
+    out
+}
+
+#[cfg(test)]
+mod produced_file_tests {
+    use super::*;
+
+    fn tool(secs: i64, name: &str, target: &str) -> Ev {
+        Ev::Tool {
+            ts: DateTime::<Utc>::from_timestamp(secs, 0).unwrap(),
+            name: name.to_string(),
+            target: Some(target.to_string()),
+            duration_ms: None,
+            ok: true,
+        }
+    }
+
+    fn session(cwd: &str, events: Vec<Ev>) -> Session {
+        Session {
+            cwd: cwd.to_string(),
+            events,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dedupes_and_orders_by_last_write() {
+        let s = session(
+            r"D:\proj",
+            vec![
+                tool(1, "Write", r"D:\proj\a.rs"),
+                tool(2, "Read", r"D:\proj\b.rs"), // 读不是产出
+                tool(3, "Edit", r"D:\proj\A.RS"), // 同文件，大小写不同也算一个
+                tool(4, "Write", r"D:\proj\src\c.rs"),
+            ],
+        );
+        let files = produced_files(&s);
+        assert_eq!(files.len(), 2, "应当合并成两个文件");
+        assert_eq!(files[0].rel, r"src\c.rs", "最后写的排最前");
+        assert_eq!(files[1].rel, "a.rs");
+        assert_eq!(files[1].count, 2);
+        assert_eq!(files[1].tool, "Edit");
+    }
+
+    #[test]
+    fn resolves_relative_paths_and_folds_dotdot() {
+        let s = session(r"D:\proj\sub", vec![tool(1, "Write", r"..\a\b.txt")]);
+        let files = produced_files(&s);
+        assert_eq!(files[0].path, r"D:\proj\a\b.txt");
+        // 落在 cwd 之外，就没有"相对 cwd"这回事，原样给绝对路径
+        assert_eq!(files[0].rel, r"D:\proj\a\b.txt");
+    }
+
+    #[test]
+    fn keeps_paths_outside_cwd_absolute() {
+        let s = session(r"D:\proj", vec![tool(1, "Write", r"E:\other\x.txt")]);
+        let files = produced_files(&s);
+        assert_eq!(files[0].path, r"E:\other\x.txt");
+        assert_eq!(files[0].rel, r"E:\other\x.txt");
+    }
+}

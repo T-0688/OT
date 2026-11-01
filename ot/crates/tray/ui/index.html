@@ -78,6 +78,15 @@
   .turn .ai { margin: 4px 0; color: #333; white-space: pre-wrap; }
   .turn .tool { color: var(--dim); font-family: Consolas, monospace; font-size: 11px; }
   .turn .tool.fail { color: var(--bad); }
+  .files { padding: 10px 16px; border-bottom: 1px solid var(--line); background: #fbfcfc; }
+  .files .files-h { color: var(--dim); font-size: 11px; letter-spacing: .04em; margin-bottom: 6px; }
+  .files .files-h b { color: var(--text); font-weight: 600; }
+  .file { display: flex; align-items: baseline; gap: 6px; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+  .file:hover { background: #e8f4f2; }
+  .file .fname { color: var(--accent); font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .file .fdir { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .fcnt { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .files .more { margin-top: 4px; color: var(--accent); font-size: 11px; cursor: pointer; }
   .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 18px 4px; }
   .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .card .k { color: var(--dim); font-size: 11px; }
@@ -496,6 +505,66 @@ async function deleteSessions(ids, label) {
   loadSnap();
 }
 
+/* 产出文件：左键用系统程序打开，右键在资源管理器里定位（文件没了就退到目录） */
+function renderFiles(files) {
+  if (!files.length) return null;
+  const LIMIT = 12;
+  const box = document.createElement("div");
+  box.className = "files";
+
+  const head = document.createElement("div");
+  head.className = "files-h";
+  head.innerHTML = "<b>产出文件</b> · " + files.length + " 个 · 点击打开，右键定位";
+  box.appendChild(head);
+
+  const list = document.createElement("div");
+  const addRow = (f) => {
+    const row = document.createElement("div");
+    row.className = "file";
+    row.title = f.path + "\n" + f.tool + (f.count > 1 ? " ×" + f.count : "") + " · " + f.when;
+
+    const name = document.createElement("span");
+    name.className = "fname";
+    name.textContent = f.name;
+    row.appendChild(name);
+
+    if (f.dir) {
+      const dir = document.createElement("span");
+      dir.className = "fdir";
+      dir.textContent = f.dir;
+      row.appendChild(dir);
+    }
+    if (f.count > 1) {
+      const cnt = document.createElement("span");
+      cnt.className = "fcnt";
+      cnt.textContent = "×" + f.count;
+      row.appendChild(cnt);
+    }
+
+    row.onclick = () => invoke("open_path", { path: f.path }).catch((e) => toast("打开失败：" + e));
+    row.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      invoke("reveal_path", { path: f.path }).catch((e) => toast("定位失败：" + e));
+    };
+    list.appendChild(row);
+  };
+
+  files.slice(0, LIMIT).forEach(addRow);
+  box.appendChild(list);
+
+  if (files.length > LIMIT) {
+    const more = document.createElement("div");
+    more.className = "more";
+    more.textContent = "还有 " + (files.length - LIMIT) + " 个，展开全部";
+    more.onclick = () => {
+      files.slice(LIMIT).forEach(addRow);
+      more.remove();
+    };
+    box.appendChild(more);
+  }
+  return box;
+}
+
 async function loadDetail(id, source) {
   const head = $("d-head");
   const body = $("d-body");
@@ -516,6 +585,9 @@ async function loadDetail(id, source) {
     '<button class="act" id="d-del" style="color:#b91c1c;border-color:#e5b4b4">彻底删除</button></div>';
   $("d-resume").onclick = () => invoke("open_session", { cwd: d.cwd, sourceName: d.source, id: d.id });
   $("d-del").onclick = () => deleteSessions([d.id], d.title);
+
+  const fileBox = renderFiles(d.files || []);
+  if (fileBox) body.appendChild(fileBox);
 
   const frag = document.createDocumentFragment();
   for (const t of d.turns) {
